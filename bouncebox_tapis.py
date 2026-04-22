@@ -19,8 +19,9 @@ class Tapis:
     # Dimensions du tapis
     LARGEUR_DEFAUT = 100.0
     HAUTEUR_DEFAUT = 50.0
+    RAYON_DEFAUT = 10
     
-    def __init__(self, largeur=LARGEUR_DEFAUT, hauteur=HAUTEUR_DEFAUT):
+    def __init__(self, largeur=LARGEUR_DEFAUT, hauteur=HAUTEUR_DEFAUT , rayon=RAYON_DEFAUT):
         """
         Initialise un tapis vierge.
         
@@ -30,6 +31,7 @@ class Tapis:
         """
         self.largeur = largeur
         self.hauteur = hauteur
+        self.rayon = rayon
         self.boules = []
         self.boule_blanche = None
     
@@ -42,7 +44,7 @@ class Tapis:
         
         # Créer la boule blanche (au centre bas)
         boule_blanche = BouleBlanche(
-            Vecteur2D(self.largeur / 2, self.hauteur * 0.8)
+            Vecteur2D(self.largeur / 2, self.hauteur * 0.8),self.rayon
         )
         self.boules.append(boule_blanche)
         self.boule_blanche = boule_blanche
@@ -50,12 +52,12 @@ class Tapis:
         # Créer 9 boules grises
         for _ in range(9):
             pos = self._position_aleatoire()
-            self.boules.append(BouleGrise(pos))
+            self.boules.append(BouleGrise(pos,self.rayon))
         
         # Créer 2 boules bleues
         for _ in range(2):
             pos = self._position_aleatoire()
-            self.boules.append(BouleBleue(pos))
+            self.boules.append(BouleBleue(pos,self.rayon))
     
     def _position_aleatoire(self):
         """
@@ -172,7 +174,7 @@ class Tapis:
             boule1 (Boule): Première boule
             boule2 (Boule): Deuxième boule
         """
-        # Échange de vélocité (collision élastique simplifiée)
+        # Échange de vélocité (collision élastique simplifiée, demande modification pour partage vitesse)
         boule1.vitesse, boule2.vitesse = boule2.vitesse, boule1.vitesse
         
         # Déterminer le comportement selon les types de boules
