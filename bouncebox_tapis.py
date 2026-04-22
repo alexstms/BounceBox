@@ -6,7 +6,7 @@ Gestion du tapis de jeu, des boules et des collisions physiques.
 import random
 from bouncebox_vecteur import Vecteur2D
 from bouncebox_boules import (
-    Boule, BouleBlanche, BouleGrise, BouleRouge, BouleBleue, Couleur
+    Boule, BouleBlanche, BouleCouleur, Couleur
 )
 
 
@@ -19,9 +19,8 @@ class Tapis:
     # Dimensions du tapis
     LARGEUR_DEFAUT = 100.0
     HAUTEUR_DEFAUT = 50.0
-    RAYON_DEFAUT = 10
     
-    def __init__(self, largeur=LARGEUR_DEFAUT, hauteur=HAUTEUR_DEFAUT , rayon=RAYON_DEFAUT):
+    def __init__(self, largeur=LARGEUR_DEFAUT, hauteur=HAUTEUR_DEFAUT):
         """
         Initialise un tapis vierge.
         
@@ -31,7 +30,6 @@ class Tapis:
         """
         self.largeur = largeur
         self.hauteur = hauteur
-        self.rayon = rayon
         self.boules = []
         self.boule_blanche = None
     
@@ -44,7 +42,7 @@ class Tapis:
         
         # Créer la boule blanche (au centre bas)
         boule_blanche = BouleBlanche(
-            Vecteur2D(self.largeur / 2, self.hauteur * 0.8),self.rayon
+            Vecteur2D(self.largeur / 2, self.hauteur * 0.8)
         )
         self.boules.append(boule_blanche)
         self.boule_blanche = boule_blanche
@@ -52,12 +50,12 @@ class Tapis:
         # Créer 9 boules grises
         for _ in range(9):
             pos = self._position_aleatoire()
-            self.boules.append(BouleGrise(pos,self.rayon))
+            self.boules.append(BouleCouleur(pos, Couleur.GRISE))
         
-        # Créer 2 boules bleues
+        # Créer 2 boules bleues (pour Joueur 2)
         for _ in range(2):
             pos = self._position_aleatoire()
-            self.boules.append(BouleBleue(pos,self.rayon))
+            self.boules.append(BouleCouleur(pos, Couleur.BLEUE))
     
     def _position_aleatoire(self):
         """
@@ -165,6 +163,23 @@ class Tapis:
                 if boule1.en_collision_avec(boule2):
                     self._traiter_collision(boule1, boule2)
     
+    def obtenir_collision_blanche_grise(self):
+        """
+        Vérifie s'il y a une collision entre la boule blanche et une boule grise.
+        Retourne la première boule grise en collision.
+        
+        Returns:
+            BouleCouleur ou None: La boule grise en collision, ou None
+        """
+        boule_blanche = self.boule_blanche
+        
+        for boule in self.boules:
+            if isinstance(boule, BouleCouleur) and boule.couleur == Couleur.GRISE:
+                if boule_blanche.en_collision_avec(boule):
+                    return boule
+        
+        return None
+    
     def _traiter_collision(self, boule1, boule2):
         """
         Traite une collision entre deux boules.
@@ -174,7 +189,7 @@ class Tapis:
             boule1 (Boule): Première boule
             boule2 (Boule): Deuxième boule
         """
-        # Échange de vélocité (collision élastique simplifiée, demande modification pour partage vitesse)
+        # Échange de vélocité (collision élastique simplifiée)
         boule1.vitesse, boule2.vitesse = boule2.vitesse, boule1.vitesse
         
         # Déterminer le comportement selon les types de boules
@@ -233,13 +248,6 @@ class Tapis:
         """
         if boule in self.boules and boule != self.boule_blanche:
             self.boules.remove(boule)
-    
-    def reinitialiser_boule_blanche(self):
-        """Remet la boule blanche à sa position initiale."""
-        if self.boule_blanche:
-            self.boule_blanche.position = Vecteur2D(self.largeur / 2, self.hauteur * 0.8)
-            self.boule_blanche.vitesse = Vecteur2D(0, 0)
-            self.boule_blanche.en_mouvement = False
     
     def obtenir_nombre_boules(self):
         """Retourne le nombre total de boules sur le tapis."""

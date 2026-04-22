@@ -162,7 +162,9 @@ class BouleBlanche(Boule):
 
 class BouleCouleur(Boule):
     """
-    Classe abstraite pour les boules colorées (grises, rouges, bleues).
+    Classe pour les boules colorées (grises, rouges, bleues).
+    Une seule classe qui peut prendre n'importe quelle couleur.
+    Peut changer de couleur lors de collisions.
     """
     
     def __init__(self, position, couleur):
@@ -171,7 +173,7 @@ class BouleCouleur(Boule):
         
         Args:
             position (Vecteur2D): Position initiale
-            couleur (Couleur): Couleur de la boule
+            couleur (Couleur): Couleur initiale de la boule (GRISE, ROUGE ou BLEUE)
         """
         super().__init__(position, couleur)
     
@@ -183,47 +185,17 @@ class BouleCouleur(Boule):
             nouvelle_couleur (Couleur): La nouvelle couleur
         """
         self.couleur = nouvelle_couleur
-
-
-class BouleGrise(BouleCouleur):
-    """
-    Boule grise qui peut changer de couleur si frappée par la boule blanche.
-    """
     
-    def __init__(self, position):
-        """Initialise une boule grise."""
-        super().__init__(position, Couleur.GRISE)
-    
-    def reagir_collision(self, couleur_joueur):
+    def reagir_collision(self, autre_boule):
         """
-        Quand la boule blanche la frappe, elle prend la couleur du joueur.
+        Comportement lors d'une collision.
+        Les boules colorées ne font rien spécial (la logique est dans Partie).
         
         Args:
-            couleur_joueur (Couleur): Couleur du joueur qui a lancé
+            autre_boule (Boule): L'autre boule en collision
         """
-        if couleur_joueur in [Couleur.ROUGE, Couleur.BLEUE]:
-            self.changer_couleur(couleur_joueur)
-
-
-class BouleRouge(BouleCouleur):
-    """Boule de couleur rouge appartenant aux joueurs rouges."""
-    
-    def __init__(self, position):
-        """Initialise une boule rouge."""
-        super().__init__(position, Couleur.ROUGE)
-    
-    def reagir_collision(self, autre_boule):
-        """Comportement lors d'une collision."""
         pass
-
-
-class BouleBleue(BouleCouleur):
-    """Boule de couleur bleue appartenant aux joueurs bleus."""
     
-    def __init__(self, position):
-        """Initialise une boule bleue."""
-        super().__init__(position, Couleur.BLEUE)
-    
-    def reagir_collision(self, autre_boule):
-        """Comportement lors d'une collision."""
-        pass
+    def __repr__(self):
+        """Représentation texte de la boule colorée."""
+        return f"BouleCouleur({self.couleur.value}, pos={self.position})"
