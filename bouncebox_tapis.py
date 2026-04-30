@@ -17,7 +17,7 @@ class Tapis:
     """
     
     # Dimensions du tapis
-    LARGEUR_DEFAUT = 100.0
+    LARGEUR_DEFAUT = 50.0
     HAUTEUR_DEFAUT = 50.0
     
     def __init__(self, largeur=LARGEUR_DEFAUT, hauteur=HAUTEUR_DEFAUT):
