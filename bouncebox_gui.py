@@ -214,7 +214,7 @@ class Afficheur:
         temps_restant = max(0, int(joueur_actif.temps_restant_tour))
         couleur_temps = VERT_OK if temps_restant > 10 else ORANGE if temps_restant > 3 else ROUGE_ERREUR
         texte_temps = self.font_moyen.render(
-            f"⏱️ {temps_restant}s",
+            f"Temps : {temps_restant}s",
             True,
             couleur_temps
         )
@@ -287,7 +287,7 @@ class Afficheur:
         
         # Texte de victoire
         texte_titre = self.font_grand.render(
-            f"🎉 {gagnant.nom} a gagné! 🎉",
+            f"{gagnant.nom} a gagné !",
             True,
             OR
         )
