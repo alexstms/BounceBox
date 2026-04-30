@@ -194,73 +194,66 @@ class Partie:
         if self.etat != EtatPartie.EN_COURS:
             return
         
-        # Mettre à jour le tapis
+        # Mettre à jour le tapis (mouvements + collisions physiques)
         self.tapis.mettre_a_jour(delta_t)
         
-        # ✨ GESTION DES COLLISIONS: Boule blanche + Boules colorées
-        if self.coup_lance:
-            boule_blanche = self.tapis.obtenir_boule_blanche()
+        # ===== APPLICATION DES RÈGLES MÉTIER =====
+        # On lit les collisions enregistrées par le tapis pendant ce frame.
+        # Important : on NE peut PAS tester en_collision_avec ici, parce que
+        # le tapis a déjà séparé physiquement les boules pour éviter les
+        # chevauchements visuels — donc elles ne se touchent plus.
+        if self.coup_lance and self.tapis.collisions_blanche:
+            from bouncebox_boules import BouleCouleur, Couleur
             
-            # Vérifier collision avec chaque boule
-            for boule in list(self.tapis.boules):
-                if boule == boule_blanche:
+            # Copie de la liste : on peut modifier le tapis pendant l'itération
+            for boule in list(self.tapis.collisions_blanche):
+                if not isinstance(boule, BouleCouleur):
                     continue
                 
-                if boule_blanche.en_collision_avec(boule):
-                    # ===== COLLISION DÉTECTÉE =====
+                # JOUEUR 1 (ROUGE) frappe :
+                if self.joueur_actif.couleur == Couleur.ROUGE:
+                    if boule.couleur == Couleur.ROUGE:
+                        # Sa propre couleur → POINT et la boule disparaît
+                        self.joueur_actif.incrementer_score()
+                        self.tapis.retirer_boule(boule)
+                        print(f"POINT ! Boule rouge capturée par {self.joueur_actif.nom} "
+                              f"({self.joueur_actif.score}/5)")
                     
-                    from bouncebox_boules import BouleCouleur, Couleur
+                    elif boule.couleur == Couleur.GRISE:
+                        # Boule neutre → prend la couleur du joueur, pas de point
+                        boule.changer_couleur(Couleur.ROUGE)
+                        print("Boule grise → rouge")
                     
-                    if isinstance(boule, BouleCouleur):
-                        # JOUEUR 1 (ROUGE) frappe:
-                        if self.joueur_actif.couleur == Couleur.ROUGE:
-                            if boule.couleur == Couleur.ROUGE:
-                                # CAS: Touche une boule ROUGE (sa couleur)
-                                self.joueur_actif.incrementer_score()
-                                self.tapis.retirer_boule(boule)
-                                print(f"POINT! Boule rouge capturée par {self.joueur_actif.nom}")
-                                print(f"Score {self.joueur_actif.nom}: {self.joueur_actif.score}/5")
-                            
-                            elif boule.couleur == Couleur.GRISE:
-                                # CAS: Touche une boule GRISE
-                                boule.changer_couleur(Couleur.ROUGE)
-                                print(f"Boule grise → rouge (J1 l'a touchée, pas de point)")
-                            
-                            elif boule.couleur == Couleur.BLEUE:
-                                # CAS: Touche une boule BLEUE (couleur adverse)
-                                boule.changer_couleur(Couleur.GRISE)
-                                print(f"Boule bleue → grise (J1 rouge l'a touchée)")
-                        
-                        # JOUEUR 2 (BLEU) frappe:
-                        elif self.joueur_actif.couleur == Couleur.BLEUE:
-                            if boule.couleur == Couleur.BLEUE:
-                                # CAS: Touche une boule BLEUE (sa couleur)
-                                self.joueur_actif.incrementer_score()
-                                self.tapis.retirer_boule(boule)
-                                print(f"POINT! Boule bleue capturée par {self.joueur_actif.nom}")
-                                print(f"Score {self.joueur_actif.nom}: {self.joueur_actif.score}/5")
-                            
-                            elif boule.couleur == Couleur.GRISE:
-                                # CAS: Touche une boule GRISE
-                                boule.changer_couleur(Couleur.BLEUE)
-                                print(f"Boule grise → bleue (J2 l'a touchée, pas de point)")
-                            
-                            elif boule.couleur == Couleur.ROUGE:
-                                # CAS: Touche une boule ROUGE (couleur adverse)
-                                boule.changer_couleur(Couleur.GRISE)
-                                print(f"Boule rouge → grise (J2 bleu l'a touchée)")
+                    elif boule.couleur == Couleur.BLEUE:
+                        # Boule adverse → redevient grise, pas de point
+                        boule.changer_couleur(Couleur.GRISE)
+                        print("Boule bleue → grise")
+                
+                # JOUEUR 2 (BLEU) frappe :
+                elif self.joueur_actif.couleur == Couleur.BLEUE:
+                    if boule.couleur == Couleur.BLEUE:
+                        self.joueur_actif.incrementer_score()
+                        self.tapis.retirer_boule(boule)
+                        print(f"POINT ! Boule bleue capturée par {self.joueur_actif.nom} "
+                              f"({self.joueur_actif.score}/5)")
+                    
+                    elif boule.couleur == Couleur.GRISE:
+                        boule.changer_couleur(Couleur.BLEUE)
+                        print("Boule grise → bleue")
+                    
+                    elif boule.couleur == Couleur.ROUGE:
+                        boule.changer_couleur(Couleur.GRISE)
+                        print("Boule rouge → grise")
         
-        # Vérifier la fin du tour (tous les boules immobiles)
+        # Vérifier la fin du tour (toutes les boules immobiles)
         if self.coup_lance and self.tapis.toutes_boules_immobiles():
-            # Arrêter le timer et passer au joueur suivant
             self._evaluer_tour()
-            return  # Ne pas décrémenter le timer si le tour est fini
+            return
         
-        # Décrémenter le temps du joueur actif SEULEMENT si un coup est lancé
+        # Décrémenter le temps du joueur actif seulement après un coup
         if self.coup_lance:
             self.joueur_actif.decrementer_temps(delta_t)
             
-            # Vérifier si le joueur a dépassé le temps limite
             if self.joueur_actif.temps_ecoule():
                 self.changer_joueur_actif()
     
