@@ -16,18 +16,12 @@ class Tapis:
     Gère la physique, les déplacements et les collisions.
     """
 
-    # Dimensions du tapis
+    # Dimensions du tapis (carré, comme un jeu de billard officiel simplifié)
     LARGEUR_DEFAUT = 50.0
     HAUTEUR_DEFAUT = 50.0
 
     def __init__(self, largeur=LARGEUR_DEFAUT, hauteur=HAUTEUR_DEFAUT):
-        """
-        Initialise un tapis vierge.
-
-        Args:
-            largeur (float): Largeur du tapis en unités
-            hauteur (float): Hauteur du tapis en unités
-        """
+        """Initialise un tapis vierge."""
         self.largeur = largeur
         self.hauteur = hauteur
         self.boules = []
@@ -40,32 +34,23 @@ class Tapis:
         """
         self.boules.clear()
 
-        # Créer la boule blanche (au centre bas)
         boule_blanche = BouleBlanche(
             Vecteur2D(self.largeur / 2, self.hauteur * 0.8)
         )
         self.boules.append(boule_blanche)
         self.boule_blanche = boule_blanche
 
-        # Créer 9 boules grises
         for _ in range(9):
             pos = self._position_aleatoire()
             self.boules.append(BouleCouleur(pos, Couleur.GRISE))
 
-        # Créer 2 boules bleues (pour Joueur 2)
         for _ in range(2):
             pos = self._position_aleatoire()
             self.boules.append(BouleCouleur(pos, Couleur.BLEUE))
 
     def _position_aleatoire(self):
-        """
-        Génère une position aléatoire sur le tapis sans chevauchement.
-
-        Returns:
-            Vecteur2D: Position aléatoire sans chevauchement
-        """
-        margin = 3.0  # Marge depuis les bordures
-        # Distance minimale entre CENTRES = 2 * rayon + marge de sécurité
+        """Génère une position aléatoire sur le tapis sans chevauchement."""
+        margin = 3.0
         min_distance = 2 * Boule.RAYON_DEFAUT + 2.0
         max_tentatives = 300
 
@@ -74,7 +59,6 @@ class Tapis:
             y = random.uniform(margin, self.hauteur - margin)
             position = Vecteur2D(x, y)
 
-            # Vérifier qu'il n'y a pas de chevauchement avec une boule existante
             collision = False
             for boule in self.boules:
                 distance = (position - boule.position).norme()
@@ -85,16 +69,10 @@ class Tapis:
             if not collision:
                 return position
 
-        # Fallback : position en grille si l'aléatoire échoue
         return self._position_grille()
 
     def _position_grille(self):
-        """
-        Fallback: Génère une position basée sur une grille régulière.
-
-        Returns:
-            Vecteur2D: Position selon une grille
-        """
+        """Fallback: position en grille régulière si l'aléatoire échoue."""
         index = len(self.boules)
         espacement_x = self.largeur / 5
         espacement_y = self.hauteur / 4
@@ -103,12 +81,8 @@ class Tapis:
         col = index % 5
         row = index // 5
 
-        x = margin + (col * espacement_x)
-        y = margin + (row * espacement_y)
-
-        # Bruit léger pour casser la régularité
-        x += random.uniform(-1, 1)
-        y += random.uniform(-1, 1)
+        x = margin + (col * espacement_x) + random.uniform(-1, 1)
+        y = margin + (row * espacement_y) + random.uniform(-1, 1)
 
         x = max(margin, min(self.largeur - margin, x))
         y = max(margin, min(self.hauteur - margin, y))
@@ -122,21 +96,18 @@ class Tapis:
     def mettre_a_jour(self, delta_t=1.0):
         """
         Met à jour l'état du tapis : déplace les boules et gère les collisions.
-
-        Args:
-            delta_t (float): Intervalle de temps
+        Plusieurs passes de résolution pour traiter les collisions en cascade.
         """
         for boule in self.boules:
             boule.deplacer(delta_t)
             boule.rebound_bordure(self.largeur, self.hauteur)
 
-        self._gerer_collisions()
+        # Plusieurs passes pour bien séparer en cas de collision multi-boules
+        for _ in range(3):
+            self._gerer_collisions()
 
     def _gerer_collisions(self):
-        """
-        Détecte et gère toutes les collisions entre boules.
-        Algorithme naïf en O(n²).
-        """
+        """Détecte et gère toutes les collisions entre boules. Algo O(n²)."""
         n = len(self.boules)
         for i in range(n):
             for j in range(i + 1, n):
@@ -147,88 +118,63 @@ class Tapis:
                     self._traiter_collision(boule1, boule2)
 
     def obtenir_collision_blanche_grise(self):
-        """
-        Vérifie s'il y a une collision entre la boule blanche et une boule grise.
-
-        Returns:
-            BouleCouleur ou None: La première boule grise en collision, ou None
-        """
+        """Retourne la première boule grise en collision avec la blanche."""
         boule_blanche = self.boule_blanche
-
         for boule in self.boules:
             if isinstance(boule, BouleCouleur) and boule.couleur == Couleur.GRISE:
                 if boule_blanche.en_collision_avec(boule):
                     return boule
-
         return None
 
     def _traiter_collision(self, boule1, boule2):
         """
         Traite une collision élastique entre deux boules de masses égales.
 
-        Algorithme :
-            1. Calcul de la normale unitaire entre les centres.
-            2. Projection de la vitesse relative sur la normale.
-            3. Si les boules s'éloignent, on ne fait rien (évite le collage).
-            4. Échange des composantes normales (choc élastique, masses égales).
-            5. Correction de position pour éviter le chevauchement.
-
-        Args:
-            boule1 (Boule): Première boule
-            boule2 (Boule): Deuxième boule
+        Ordre crucial :
+            1. SÉPARATION TOUJOURS appliquée si chevauchement (même au repos),
+               c'est ce qui empêche le chevauchement visuel.
+            2. ÉCHANGE DES VITESSES uniquement si les boules s'approchent
+               (sinon collage et oscillations parasites).
         """
-        # 1. Vecteur normal unitaire (de boule1 vers boule2)
         delta = boule2.position - boule1.position
         distance = delta.norme()
 
-        # Sécurité : centres confondus → on évite la division par zéro
+        # Centres confondus : normale arbitraire pour éviter division par zéro
         if distance == 0:
-            return
+            normale = Vecteur2D(1.0, 0.0)
+            distance = 0.0001
+        else:
+            normale = delta * (1.0 / distance)
 
-        normale = delta * (1.0 / distance)
-
-        # 2. Vitesse relative et projection sur la normale
-        vitesse_relative = boule1.vitesse - boule2.vitesse
-        v_rel_normale = vitesse_relative.produit_scalaire(normale)
-
-        # 3. Si les boules s'éloignent déjà, ne rien faire
-        if v_rel_normale <= 0:
-            return
-
-        # 4. Échange des composantes normales
-        impulsion = normale * v_rel_normale
-        boule1.vitesse = boule1.vitesse - impulsion
-        boule2.vitesse = boule2.vitesse + impulsion
-
-        # Réveiller les boules touchées
-        if boule1.vitesse.norme() > Boule.SEUIL_MOUVEMENT:
-            boule1.en_mouvement = True
-        if boule2.vitesse.norme() > Boule.SEUIL_MOUVEMENT:
-            boule2.en_mouvement = True
-
-        # 5. Correction de position pour éviter le chevauchement
+        # === 1. SÉPARATION (toujours, même si v_rel = 0) ===
         chevauchement = (boule1.rayon + boule2.rayon) - distance
         if chevauchement > 0:
-            correction = normale * (chevauchement / 2)
+            correction = normale * (chevauchement / 2 + 0.001)
             boule1.position = boule1.position - correction
             boule2.position = boule2.position + correction
 
-        # Comportement spécifique aux collisions impliquant la boule blanche
+        # === 2. ÉCHANGE DE VITESSES (seulement si elles s'approchent) ===
+        vitesse_relative = boule1.vitesse - boule2.vitesse
+        v_rel_normale = vitesse_relative.produit_scalaire(normale)
+
+        if v_rel_normale > 0:
+            impulsion = normale * v_rel_normale
+            boule1.vitesse = boule1.vitesse - impulsion
+            boule2.vitesse = boule2.vitesse + impulsion
+
+            if boule1.vitesse.norme() > Boule.SEUIL_MOUVEMENT:
+                boule1.en_mouvement = True
+            if boule2.vitesse.norme() > Boule.SEUIL_MOUVEMENT:
+                boule2.en_mouvement = True
+
+        # Règles métier spécifiques boule blanche
         if isinstance(boule1, BouleBlanche):
             self._appliquer_regles_collision(boule1, boule2)
         elif isinstance(boule2, BouleBlanche):
             self._appliquer_regles_collision(boule2, boule1)
 
     def _appliquer_regles_collision(self, boule_blanche, autre_boule):
-        """
-        Applique les règles du jeu lors d'une collision avec la boule blanche.
-        Les règles spécifiques (changement de couleur, score) sont gérées
-        dans la classe Partie.
-
-        Args:
-            boule_blanche (BouleBlanche): La boule blanche
-            autre_boule (Boule): L'autre boule
-        """
+        """Règles spécifiques gérées dans la classe Partie."""
         pass
 
     def obtenir_boules_par_couleur(self, couleur):
@@ -244,12 +190,7 @@ class Tapis:
         return len(self.obtenir_boules_en_mouvement()) == 0
 
     def retirer_boule(self, boule):
-        """
-        Retire une boule du tapis (quand elle est gagnée).
-
-        Args:
-            boule (Boule): La boule à retirer
-        """
+        """Retire une boule du tapis (quand elle est gagnée)."""
         if boule in self.boules and boule != self.boule_blanche:
             self.boules.remove(boule)
 
@@ -258,5 +199,4 @@ class Tapis:
         return len(self.boules)
 
     def __str__(self):
-        """Représentation textuelle du tapis."""
         return f"Tapis({self.largeur}x{self.hauteur}) avec {self.obtenir_nombre_boules()} boules"
