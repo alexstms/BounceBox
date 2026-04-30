@@ -24,10 +24,10 @@ class Boule(ABC):
     """
     
     # Constantes physiques
-    RAYON_DEFAUT = 1.5
-    RESISTANCE = 0.995  # Coefficient de friction (0 < r < 1)
-    GRAVITE = 0.0  # Pas de gravité dans ce jeu
-    SEUIL_MOUVEMENT = 0.1  # Vitesse minimale avant arrêt
+    RAYON_DEFAUT = 1
+    RESISTANCE = 0.98   # Coefficient de friction par frame (perte ~70%/sec à 60 FPS)
+    GRAVITE = 0.0       # Pas de gravité dans ce jeu
+    SEUIL_MOUVEMENT = 0.3  # Vitesse en-dessous de laquelle on considère la boule arrêtée
     
     def __init__(self, position, couleur, rayon=RAYON_DEFAUT):
         """
