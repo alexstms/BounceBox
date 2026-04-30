@@ -189,12 +189,24 @@ class Tapis:
             boule1 (Boule): Première boule
             boule2 (Boule): Deuxième boule
         """
-        # Échange de vélocité (collision élastique simplifiée)
+        # Échange de vélocité 
+        #déterminer normalle du contacte
         Position1 = boule1.position
         Position2 = boule2.position
-        normale = Vecteur2D(Position1[0]-Position2[0],Position1[1]-Position2[1])
+        normale = Vecteur2D(Position2.X-Position1.X,Position2.y-Position1.y)
+        normale = normale.normalise()
         
-        boule1.vitesse, boule2.vitesse = boule2.vitesse, boule1.vitesse
+        #déterminer la vitesse relative (boule 2 fixe)
+        vitesse_relative = boule1.vitesse - boule2.vitesse
+        norme_vitesse_relative = vitesse_relative.norme()
+
+        #déterminer l'angle entre la vitesse et la normale
+        angle = vitesse_relative.angle_avec(normale)
+
+        #modifier les vitesse
+        boule2.vitesse = boule2.vitesse + np.cos(angle)*norme_vitesse_relative*normale
+        
+        boule1.vitesse = boule1.vitesse - np.cos(angle)*norme_vitesse_relative*normale
         
         # Déterminer le comportement selon les types de boules
         if isinstance(boule1, BouleBlanche):
