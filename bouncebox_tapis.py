@@ -144,7 +144,7 @@ class Tapis:
             normale = Vecteur2D(1.0, 0.0)
             distance = 0.0001
         else:
-            normale = delta * (1.0 / distance)
+            normale = delta.normalise()
 
         # === 1. SÉPARATION (toujours, même si v_rel = 0) ===
         chevauchement = (boule1.rayon + boule2.rayon) - distance
