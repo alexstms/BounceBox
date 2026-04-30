@@ -218,18 +218,18 @@ class Partie:
                                 # CAS: Touche une boule ROUGE (sa couleur)
                                 self.joueur_actif.incrementer_score()
                                 self.tapis.retirer_boule(boule)
-                                print(f"🎯 POINT! Boule rouge capturée par {self.joueur_actif.nom}")
-                                print(f"📊 Score {self.joueur_actif.nom}: {self.joueur_actif.score}/5")
+                                print(f"POINT! Boule rouge capturée par {self.joueur_actif.nom}")
+                                print(f"Score {self.joueur_actif.nom}: {self.joueur_actif.score}/5")
                             
                             elif boule.couleur == Couleur.GRISE:
                                 # CAS: Touche une boule GRISE
                                 boule.changer_couleur(Couleur.ROUGE)
-                                print(f"💫 Boule grise → rouge (J1 l'a touchée, pas de point)")
+                                print(f"Boule grise → rouge (J1 l'a touchée, pas de point)")
                             
                             elif boule.couleur == Couleur.BLEUE:
                                 # CAS: Touche une boule BLEUE (couleur adverse)
                                 boule.changer_couleur(Couleur.GRISE)
-                                print(f"💫 Boule bleue → grise (J1 rouge l'a touchée)")
+                                print(f"Boule bleue → grise (J1 rouge l'a touchée)")
                         
                         # JOUEUR 2 (BLEU) frappe:
                         elif self.joueur_actif.couleur == Couleur.BLEUE:
@@ -237,18 +237,18 @@ class Partie:
                                 # CAS: Touche une boule BLEUE (sa couleur)
                                 self.joueur_actif.incrementer_score()
                                 self.tapis.retirer_boule(boule)
-                                print(f"🎯 POINT! Boule bleue capturée par {self.joueur_actif.nom}")
-                                print(f"📊 Score {self.joueur_actif.nom}: {self.joueur_actif.score}/5")
+                                print(f"POINT! Boule bleue capturée par {self.joueur_actif.nom}")
+                                print(f"Score {self.joueur_actif.nom}: {self.joueur_actif.score}/5")
                             
                             elif boule.couleur == Couleur.GRISE:
                                 # CAS: Touche une boule GRISE
                                 boule.changer_couleur(Couleur.BLEUE)
-                                print(f"💫 Boule grise → bleue (J2 l'a touchée, pas de point)")
+                                print(f"Boule grise → bleue (J2 l'a touchée, pas de point)")
                             
                             elif boule.couleur == Couleur.ROUGE:
                                 # CAS: Touche une boule ROUGE (couleur adverse)
                                 boule.changer_couleur(Couleur.GRISE)
-                                print(f"💫 Boule rouge → grise (J2 bleu l'a touchée)")
+                                print(f"Boule rouge → grise (J2 bleu l'a touchée)")
         
         # Vérifier la fin du tour (tous les boules immobiles)
         if self.coup_lance and self.tapis.toutes_boules_immobiles():
