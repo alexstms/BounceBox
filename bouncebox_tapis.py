@@ -190,6 +190,10 @@ class Tapis:
             boule2 (Boule): Deuxième boule
         """
         # Échange de vélocité (collision élastique simplifiée)
+        Position1 = boule1.position
+        Position2 = boule2.position
+        normale = Vecteur2D(Position1[0]-Position2[0],Position1[1]-Position2[1])
+        
         boule1.vitesse, boule2.vitesse = boule2.vitesse, boule1.vitesse
         
         # Déterminer le comportement selon les types de boules
