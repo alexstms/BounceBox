@@ -27,7 +27,7 @@ class Boule(ABC):
     RAYON_DEFAUT = 1.5
     RESISTANCE = 0.995  # Coefficient de friction (0 < r < 1)
     GRAVITE = 0.0  # Pas de gravité dans ce jeu
-    SEUIL_MOUVEMENT = 0.01  # Vitesse minimale avant arrêt
+    SEUIL_MOUVEMENT = 0.1  # Vitesse minimale avant arrêt
     
     def __init__(self, position, couleur, rayon=RAYON_DEFAUT):
         """
