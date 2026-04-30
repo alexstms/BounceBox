@@ -26,6 +26,9 @@ class Tapis:
         self.hauteur = hauteur
         self.boules = []
         self.boule_blanche = None
+        # Liste des boules touchées par la boule blanche pendant le frame courant.
+        # Lue par la classe Partie pour appliquer les règles de couleur/score.
+        self.collisions_blanche = []
 
     def initialiser_partie(self):
         """
@@ -98,6 +101,9 @@ class Tapis:
         Met à jour l'état du tapis : déplace les boules et gère les collisions.
         Plusieurs passes de résolution pour traiter les collisions en cascade.
         """
+        # Réinitialiser la liste des collisions impliquant la blanche pour ce frame
+        self.collisions_blanche.clear()
+
         for boule in self.boules:
             boule.deplacer(delta_t)
             boule.rebound_bordure(self.largeur, self.hauteur)
@@ -144,7 +150,7 @@ class Tapis:
             normale = Vecteur2D(1.0, 0.0)
             distance = 0.0001
         else:
-            normale = delta.normalise()
+            normale = delta * (1.0 / distance)
 
         # === 1. SÉPARATION (toujours, même si v_rel = 0) ===
         chevauchement = (boule1.rayon + boule2.rayon) - distance
@@ -168,14 +174,14 @@ class Tapis:
                 boule2.en_mouvement = True
 
         # Règles métier spécifiques boule blanche
-        if isinstance(boule1, BouleBlanche):
-            self._appliquer_regles_collision(boule1, boule2)
-        elif isinstance(boule2, BouleBlanche):
-            self._appliquer_regles_collision(boule2, boule1)
-
-    def _appliquer_regles_collision(self, boule_blanche, autre_boule):
-        """Règles spécifiques gérées dans la classe Partie."""
-        pass
+        # On enregistre la boule touchée par la blanche pour que Partie puisse
+        # appliquer les règles de couleur et de score.
+        if isinstance(boule1, BouleBlanche) and not isinstance(boule2, BouleBlanche):
+            if boule2 not in self.collisions_blanche:
+                self.collisions_blanche.append(boule2)
+        elif isinstance(boule2, BouleBlanche) and not isinstance(boule1, BouleBlanche):
+            if boule1 not in self.collisions_blanche:
+                self.collisions_blanche.append(boule1)
 
     def obtenir_boules_par_couleur(self, couleur):
         """Retourne toutes les boules d'une couleur donnée."""
