@@ -22,10 +22,15 @@ class Afficheur:
     - Dessiner les boules, le tapis, les textes
     """
     
-    def __init__(self, largeur_ecran, hauteur_ecran, tapis_largeur=100, tapis_hauteur=50):
+    def __init__(self, largeur_ecran, hauteur_ecran, tapis_largeur=50, tapis_hauteur=50):
         """
         Initialise l'afficheur.
-        
+
+        Le plateau est dessiné avec un rapport d'aspect strictement préservé :
+        on utilise un facteur d'échelle UNIQUE (le plus contraint des deux),
+        puis on centre la zone de jeu dans la fenêtre. Si le tapis logique est
+        carré (50x50), la zone affichée sera également un carré parfait.
+
         Args:
             largeur_ecran (int): Largeur de la fenêtre en pixels
             hauteur_ecran (int): Hauteur de la fenêtre en pixels
@@ -34,24 +39,39 @@ class Afficheur:
         """
         self.largeur_ecran = largeur_ecran
         self.hauteur_ecran = hauteur_ecran
-        
+
         self.tapis_largeur = tapis_largeur
         self.tapis_hauteur = tapis_hauteur
-        
-        # Marges pour l'interface
-        self.marge_top = 60
-        self.marge_bottom = 60
-        self.marge_left = 20
-        self.marge_right = 20
-        
-        # Dimensions utilisables pour le tapis
-        self.zone_largeur = largeur_ecran - self.marge_left - self.marge_right
-        self.zone_hauteur = hauteur_ecran - self.marge_top - self.marge_bottom
-        
-        # Facteurs de mise à l'échelle
-        self.scale_x = self.zone_largeur / tapis_largeur
-        self.scale_y = self.zone_hauteur / tapis_hauteur
-        
+
+        # Marges minimales pour l'interface (scores en haut, timer en bas)
+        marge_top_min = 60
+        marge_bottom_min = 60
+        marge_lat_min = 20
+
+        # Espace disponible pour le tapis
+        espace_largeur = largeur_ecran - 2 * marge_lat_min
+        espace_hauteur = hauteur_ecran - marge_top_min - marge_bottom_min
+
+        # Échelle UNIFORME : on prend la plus contraignante des deux dimensions
+        # pour préserver le rapport d'aspect du tapis logique
+        scale_max_x = espace_largeur / tapis_largeur
+        scale_max_y = espace_hauteur / tapis_hauteur
+        self.scale = min(scale_max_x, scale_max_y)
+
+        # Dimensions réelles de la zone de jeu (en pixels)
+        self.zone_largeur = int(self.scale * tapis_largeur)
+        self.zone_hauteur = int(self.scale * tapis_hauteur)
+
+        # Centrage de la zone de jeu dans l'espace disponible
+        self.marge_left = (largeur_ecran - self.zone_largeur) // 2
+        self.marge_top = marge_top_min + (espace_hauteur - self.zone_hauteur) // 2
+        self.marge_right = self.marge_left
+        self.marge_bottom = hauteur_ecran - self.marge_top - self.zone_hauteur
+
+        # Conservées pour rétrocompatibilité avec convertir_position / convertir_rayon
+        self.scale_x = self.scale
+        self.scale_y = self.scale
+
         # Polices
         self.font_grand = pygame.font.Font(None, 40)
         self.font_moyen = pygame.font.Font(None, 30)
