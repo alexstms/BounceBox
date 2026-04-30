@@ -25,7 +25,7 @@ class Boule(ABC):
     
     # Constantes physiques
     RAYON_DEFAUT = 1.3
-    RESISTANCE = 0.98  # Coefficient de friction (0 < r < 1)
+    RESISTANCE = 0.99  # Coefficient de friction (0 < r < 1)
     GRAVITE = 0.0  # Pas de gravité dans ce jeu
     SEUIL_MOUVEMENT = 0.01  # Vitesse minimale avant arrêt
     
