@@ -4,7 +4,7 @@ Définition des classes de boules avec leurs propriétés et comportements.
 Utilise l'héritage pour différencier les types de boules.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from enum import Enum
 from bouncebox_vecteur import Vecteur2D
 
@@ -24,8 +24,8 @@ class Boule(ABC):
     """
     
     # Constantes physiques
-    RAYON_DEFAUT = 1
-    RESISTANCE = 0.98   # Coefficient de friction par frame (perte ~70%/sec à 60 FPS)
+    RAYON_DEFAUT = 1.5
+    RESISTANCE = 0.99   # Coefficient de friction par frame (perte ~70%/sec à 60 FPS)
     GRAVITE = 0.0       # Pas de gravité dans ce jeu
     SEUIL_MOUVEMENT = 0.3  # Vitesse en-dessous de laquelle on considère la boule arrêtée
     
@@ -43,17 +43,6 @@ class Boule(ABC):
         self.rayon = rayon
         self.vitesse = Vecteur2D(0, 0)  # Initialement immobile
         self.en_mouvement = False
-    
-    @abstractmethod
-    def reagir_collision(self, autre_boule):
-        """
-        Défini le comportement lors d'une collision.
-        Chaque type de boule a un comportement différent.
-        
-        Args:
-            autre_boule (Boule): La boule avec laquelle cette boule entre en collision
-        """
-        pass
     
     def deplacer(self, delta_t=1.0):
         """
@@ -114,27 +103,36 @@ class Boule(ABC):
     def rebound_bordure(self, largeur_tapis, hauteur_tapis):
         """
         Gère le rebond de la boule sur les bordures du tapis.
-        Rebond symétrique avec application de résistance.
-        
+
         Args:
             largeur_tapis (float): Largeur du tapis
             hauteur_tapis (float): Hauteur du tapis
+        Returns:
+            bool: True si un rebond a eu lieu ce frame
         """
+        rebond = False
+
         # Rebond sur les bordures horizontales
         if self.position.x - self.rayon < 0:
             self.position.x = self.rayon
-            self.vitesse.x = abs(self.vitesse.x) * self.RESISTANCE
+            self.vitesse.x = abs(self.vitesse.x)
+            rebond = True
         elif self.position.x + self.rayon > largeur_tapis:
             self.position.x = largeur_tapis - self.rayon
-            self.vitesse.x = -abs(self.vitesse.x) * self.RESISTANCE
-        
+            self.vitesse.x = -abs(self.vitesse.x)
+            rebond = True
+
         # Rebond sur les bordures verticales
         if self.position.y - self.rayon < 0:
             self.position.y = self.rayon
-            self.vitesse.y = abs(self.vitesse.y) * self.RESISTANCE
+            self.vitesse.y = abs(self.vitesse.y)
+            rebond = True
         elif self.position.y + self.rayon > hauteur_tapis:
             self.position.y = hauteur_tapis - self.rayon
-            self.vitesse.y = -abs(self.vitesse.y) * self.RESISTANCE
+            self.vitesse.y = -abs(self.vitesse.y)
+            rebond = True
+
+        return rebond
     
     def __str__(self):
         """Représentation textuelle de la boule."""
@@ -155,11 +153,6 @@ class BouleBlanche(Boule):
         """Initialise la boule blanche."""
         super().__init__(position, Couleur.BLANCHE)
     
-    def reagir_collision(self, autre_boule):
-        """La boule blanche ne change pas en collision (les autres changent)."""
-        pass
-
-
 class BouleCouleur(Boule):
     """
     Classe pour les boules colorées (grises, rouges, bleues).
@@ -186,16 +179,7 @@ class BouleCouleur(Boule):
         """
         self.couleur = nouvelle_couleur
     
-    def reagir_collision(self, autre_boule):
-        """
-        Comportement lors d'une collision.
-        Les boules colorées ne font rien spécial (la logique est dans Partie).
-        
-        Args:
-            autre_boule (Boule): L'autre boule en collision
-        """
-        pass
-    
     def __repr__(self):
         """Représentation texte de la boule colorée."""
         return f"BouleCouleur({self.couleur.value}, pos={self.position})"
+
