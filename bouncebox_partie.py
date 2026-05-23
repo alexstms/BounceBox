@@ -4,6 +4,7 @@ Gestion de la partie, des joueurs et de l'état du jeu.
 Coordonne les interactions entre les joueurs, le tapis et les règles.
 """
 
+import random
 from enum import Enum
 from datetime import datetime
 from bouncebox_boules import Couleur
@@ -114,12 +115,27 @@ class Partie:
         self.debut_partie = None  # Timestamp du début
     
     def demarrer(self):
-        """Démarre une nouvelle partie."""
+        """Démarre une nouvelle partie avec tirage au sort des couleurs."""
         self.tapis.initialiser_partie()
         self.etat = EtatPartie.EN_COURS
         self.debut_partie = datetime.now()
+
+        # Tirage au sort : qui reçoit le Rouge ? (Rouge commence toujours)
+        if random.randint(0, 1) == 0:
+            self.joueur1.couleur = Couleur.ROUGE
+            self.joueur2.couleur = Couleur.BLEUE
+            self.joueur_actif    = self.joueur1
+            self.joueur_inactif  = self.joueur2
+        else:
+            self.joueur1.couleur = Couleur.BLEUE
+            self.joueur2.couleur = Couleur.ROUGE
+            self.joueur_actif    = self.joueur2
+            self.joueur_inactif  = self.joueur1
+
         self.joueur_actif.reinitialiser_temps_tour()
         self.joueur_inactif.reinitialiser_temps_tour()
+        print(f"🎲 Tirage : {self.joueur_actif.nom} = Rouge (commence), "
+              f"{self.joueur_inactif.nom} = Bleu")
     
     def obtenir_joueur_actif(self):
         """
@@ -313,3 +329,4 @@ class Partie:
     def __repr__(self):
         """Représentation pour debug."""
         return self.__str__()
+
