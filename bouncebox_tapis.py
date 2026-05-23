@@ -29,6 +29,7 @@ class Tapis:
         # Liste des boules touchées par la boule blanche pendant le frame courant.
         # Lue par la classe Partie pour appliquer les règles de couleur/score.
         self.collisions_blanche = []
+        self.nb_collisions = 0  # Nombre total de collisions réelles ce frame
 
     def initialiser_partie(self):
         """
@@ -101,12 +102,14 @@ class Tapis:
         Met à jour l'état du tapis : déplace les boules et gère les collisions.
         Plusieurs passes de résolution pour traiter les collisions en cascade.
         """
-        # Réinitialiser la liste des collisions impliquant la blanche pour ce frame
+        # Réinitialiser les compteurs de collisions pour ce frame
         self.collisions_blanche.clear()
+        self.nb_collisions = 0
 
         for boule in self.boules:
             boule.deplacer(delta_t)
-            boule.rebound_bordure(self.largeur, self.hauteur)
+            if boule.rebound_bordure(self.largeur, self.hauteur):
+                self.nb_collisions += 1
 
         # Plusieurs passes pour bien séparer en cas de collision multi-boules
         for _ in range(3):
@@ -123,14 +126,17 @@ class Tapis:
                 if boule1.en_collision_avec(boule2):
                     self._traiter_collision(boule1, boule2)
 
-    def obtenir_collision_blanche_grise(self):
-        """Retourne la première boule grise en collision avec la blanche."""
-        boule_blanche = self.boule_blanche
-        for boule in self.boules:
-            if isinstance(boule, BouleCouleur) and boule.couleur == Couleur.GRISE:
-                if boule_blanche.en_collision_avec(boule):
-                    return boule
-        return None
+    # [INUTILISÉ] Cette méthode n'est appelée nulle part dans le projet.
+    # La détection des collisions avec la blanche est gérée par collisions_blanche
+    # dans _traiter_collision(), lu ensuite par Partie.mettre_a_jour().
+    # def obtenir_collision_blanche_grise(self):
+    #     """Retourne la première boule grise en collision avec la blanche."""
+    #     boule_blanche = self.boule_blanche
+    #     for boule in self.boules:
+    #         if isinstance(boule, BouleCouleur) and boule.couleur == Couleur.GRISE:
+    #             if boule_blanche.en_collision_avec(boule):
+    #                 return boule
+    #     return None
 
     def _traiter_collision(self, boule1, boule2):
         """
@@ -173,6 +179,8 @@ class Tapis:
             if boule2.vitesse.norme() > Boule.SEUIL_MOUVEMENT:
                 boule2.en_mouvement = True
 
+            self.nb_collisions += 1  # Collision réelle (échange de vitesses)
+
         # Règles métier spécifiques boule blanche
         # On enregistre la boule touchée par la blanche pour que Partie puisse
         # appliquer les règles de couleur et de score.
@@ -206,3 +214,4 @@ class Tapis:
 
     def __str__(self):
         return f"Tapis({self.largeur}x{self.hauteur}) avec {self.obtenir_nombre_boules()} boules"
+
