@@ -16,19 +16,28 @@ from bouncebox_partie import Partie
 from bouncebox_couleurs import *
 from bouncebox_db import initialiser_base, sauvegarder_partie
 
+# ============================================================================
+# CONSTANTES DE SÉCURITÉ POUR L'INTERFACE GRAPHIQUE
+# ============================================================================
+VERT_FOND_CLAIR       = (34, 139, 34)   # VERT_TAPIS original
+VERT_FOND_FONCE       = (20, 80, 20)    # Version assombrie pour le dégradé
+VERT_FEUTRE           = (34, 139, 34)   # VERT_TAPIS original
+VERT_FEUTRE_BORD      = (20, 80, 20)
+BOIS_CADRE            = (139, 69, 19)   # BRUN_BORDURE original
+BOIS_CADRE_CLAIR      = (180, 100, 40)  # Reflet bois
+LOGO_PIERRE           = (200, 200, 200)
+LOGO_PIERRE_OMBRE     = (50, 50, 50)
+PANEL_ROUGE           = (140, 20, 20)
+PANEL_BLEU            = (20, 40, 140)
+PANEL_BORDURE         = (255, 215, 0)   # OR original
+BILLE_VIDE            = (40, 50, 45)
+BILLE_VIDE_BORD       = (70, 85, 75)
+TIMER_FOND            = (230, 235, 220) # Écran digital clair
+TIMER_TEXTE           = (20, 40, 30)
+
 
 def _generer_son(frequence, duree, volume=0.4, decroissance=True):
-    """
-    Génère un son synthétique (sinusoïde) sans fichier externe.
-
-    Args:
-        frequence (float): Fréquence en Hz
-        duree (float): Durée en secondes
-        volume (float): Volume entre 0.0 et 1.0
-        decroissance (bool): Fondu sortant pour adoucir la fin du son
-    Returns:
-        pygame.mixer.Sound
-    """
+    """Génère un son synthétique sans fichier externe."""
     sample_rate = 44100
     n_samples = int(sample_rate * duree)
     buf = array.array('h', [0] * n_samples)
@@ -36,554 +45,445 @@ def _generer_son(frequence, duree, volume=0.4, decroissance=True):
         t = i / sample_rate
         val = math.sin(2 * math.pi * frequence * t)
         if decroissance:
-            val *= 1.0 - (i / n_samples)  # fondu sortant
+            val *= 1.0 - (i / n_samples)
         buf[i] = int(val * volume * 32767)
     son = pygame.mixer.Sound(buffer=buf)
     return son
 
 
 class Afficheur:
-    """
-    Gère tout le rendu graphique du jeu.
-    Responsable de:
-    - Convertir les coordonnées logiques en pixels
-    - Dessiner les boules, le tapis, les textes
-    """
-    
+    """Gère tout le rendu graphique du jeu."""
+
     def __init__(self, largeur_ecran, hauteur_ecran, tapis_largeur=50, tapis_hauteur=50):
-        """
-        Initialise l'afficheur.
-
-        Le plateau est dessiné avec un rapport d'aspect strictement préservé :
-        on utilise un facteur d'échelle UNIQUE (le plus contraint des deux),
-        puis on centre la zone de jeu dans la fenêtre. Si le tapis logique est
-        carré (50x50), la zone affichée sera également un carré parfait.
-
-        Args:
-            largeur_ecran (int): Largeur de la fenêtre en pixels
-            hauteur_ecran (int): Hauteur de la fenêtre en pixels
-            tapis_largeur (float): Largeur logique du tapis
-            tapis_hauteur (float): Hauteur logique du tapis
-        """
         self.largeur_ecran = largeur_ecran
         self.hauteur_ecran = hauteur_ecran
-
         self.tapis_largeur = tapis_largeur
         self.tapis_hauteur = tapis_hauteur
 
-        # Marges minimales pour l'interface (scores en haut, timer en bas)
-        marge_top_min = 60
-        marge_bottom_min = 60
-        marge_lat_min = 20
+        # Zone latérale droite (~38% de la largeur) pour le logo, scores et timer
+        self.zone_laterale = int(largeur_ecran * 0.38)
 
-        # Espace disponible pour le tapis
-        espace_largeur = largeur_ecran - 2 * marge_lat_min
-        espace_hauteur = hauteur_ecran - marge_top_min - marge_bottom_min
+        marge_haut = 70
+        marge_bas = 70
+        marge_gauche = 30
 
-        # Échelle UNIFORME : on prend la plus contraignante des deux dimensions
-        # pour préserver le rapport d'aspect du tapis logique
+        espace_largeur = largeur_ecran - self.zone_laterale - marge_gauche - 20
+        espace_hauteur = hauteur_ecran - marge_haut - marge_bas
+
         scale_max_x = espace_largeur / tapis_largeur
         scale_max_y = espace_hauteur / tapis_hauteur
         self.scale = min(scale_max_x, scale_max_y)
 
-        # Dimensions réelles de la zone de jeu (en pixels)
         self.zone_largeur = int(self.scale * tapis_largeur)
         self.zone_hauteur = int(self.scale * tapis_hauteur)
 
-        # Centrage de la zone de jeu dans l'espace disponible
-        self.marge_left = (largeur_ecran - self.zone_largeur) // 2
-        self.marge_top = marge_top_min + (espace_hauteur - self.zone_hauteur) // 2
+        self.marge_left = marge_gauche + (espace_largeur - self.zone_largeur) // 2
+        self.marge_top = marge_haut + (espace_hauteur - self.zone_hauteur) // 2
         self.marge_right = self.marge_left
         self.marge_bottom = hauteur_ecran - self.marge_top - self.zone_hauteur
 
-        # Conservées pour rétrocompatibilité avec convertir_position / convertir_rayon
+        self.zone_x = largeur_ecran - self.zone_laterale
         self.scale_x = self.scale
         self.scale_y = self.scale
 
         # Polices
-        self.font_titre  = pygame.font.Font(None, 90)
-        self.font_grand  = pygame.font.Font(None, 40)
-        self.font_moyen  = pygame.font.Font(None, 30)
-        self.font_petit  = pygame.font.Font(None, 20)
-
-    # ------------------------------------------------------------------
-    # Helpers menus
-    # ------------------------------------------------------------------
+        # Polices (sécurisées avec SysFont pour éviter les carrés blancs)
+        self.font_titre = pygame.font.SysFont("arial", 90, bold=True)
+        self.font_grand = pygame.font.SysFont("arial", 40)
+        self.font_moyen = pygame.font.SysFont("arial", 30)
+        self.font_petit = pygame.font.SysFont("arial", 20)
+        self.font_logo = pygame.font.SysFont("arial", 64, bold=True)
+        self.font_timer = pygame.font.SysFont("arial", 56)
+        self._fond_cache = None
 
     def dessiner_bouton(self, screen, texte, rect, survol=False):
-        """
-        Dessine un bouton rectangulaire centré.
-
-        Args:
-            screen: Surface Pygame
-            texte (str): Texte affiché dans le bouton
-            rect (pygame.Rect): Position et taille du bouton
-            survol (bool): True si la souris est dessus (éclaire le bouton)
-        Returns:
-            pygame.Rect: le même rect (pour tests de clic)
-        """
         couleur_fond    = (60, 60, 80) if not survol else (90, 90, 120)
         couleur_bordure = OR if survol else GRIS_CLAIR
         pygame.draw.rect(screen, couleur_fond,    rect, border_radius=10)
         pygame.draw.rect(screen, couleur_bordure, rect, 2, border_radius=10)
         surf = self.font_grand.render(texte, True, BLANC)
-        screen.blit(surf, (rect.centerx - surf.get_width() // 2,
-                           rect.centery - surf.get_height() // 2))
+        screen.blit(surf, (rect.centerx - surf.get_width() // 2, rect.centery - surf.get_height() // 2))
         return rect
 
     def dessiner_champ_texte(self, screen, label, valeur, rect, actif=False, curseur=True):
-        """
-        Dessine un champ de saisie de texte.
-
-        Args:
-            screen: Surface Pygame
-            label (str): Étiquette au-dessus du champ
-            valeur (str): Texte actuellement saisi
-            rect (pygame.Rect): Zone du champ
-            actif (bool): True si le champ a le focus
-            curseur (bool): Affiche le curseur clignotant si actif
-        """
-        # Étiquette
         surf_label = self.font_petit.render(label, True, GRIS_CLAIR)
         screen.blit(surf_label, (rect.x, rect.y - 22))
 
-        # Fond du champ
         couleur_bordure = OR if actif else GRIS_CLAIR
         pygame.draw.rect(screen, GRIS_FONCÉ, rect, border_radius=6)
         pygame.draw.rect(screen, couleur_bordure, rect, 2, border_radius=6)
 
-        # Texte saisi + curseur clignotant
         affichage = valeur
         if actif and curseur and int(time.time() * 2) % 2 == 0:
             affichage += '|'
         surf_texte = self.font_moyen.render(affichage, True, BLANC)
         screen.blit(surf_texte, (rect.x + 10, rect.centery - surf_texte.get_height() // 2))
 
-    # ------------------------------------------------------------------
-    # Écrans menus
-    # ------------------------------------------------------------------
-
     def afficher_ecran_titre(self, screen, largeur, hauteur):
-        """
-        Affiche l'écran titre : fond uni + nom du jeu + bouton Jouer.
-
-        Returns:
-            pygame.Rect: rect du bouton (pour test de clic)
-        """
         screen.fill(FOND_ÉCRAN)
-
-        # Titre
         surf_titre = self.font_titre.render("BounceBox", True, OR)
-        screen.blit(surf_titre, (largeur // 2 - surf_titre.get_width() // 2,
-                                 hauteur // 2 - 140))
+        screen.blit(surf_titre, (largeur // 2 - surf_titre.get_width() // 2, hauteur // 2 - 140))
 
-        # Sous-titre
         surf_sous = self.font_moyen.render("Jeu de billard à deux joueurs", True, GRIS_CLAIR)
-        screen.blit(surf_sous, (largeur // 2 - surf_sous.get_width() // 2,
-                                hauteur // 2 - 50))
+        screen.blit(surf_sous, (largeur // 2 - surf_sous.get_width() // 2, hauteur // 2 - 50))
 
-        # Bouton
         btn = pygame.Rect(largeur // 2 - 120, hauteur // 2 + 20, 240, 55)
         souris = pygame.mouse.get_pos()
         return self.dessiner_bouton(screen, "▶  Jouer", btn, survol=btn.collidepoint(souris))
 
     def afficher_ecran_noms(self, screen, largeur, hauteur, noms, champ_actif, sauvegarder=False):
-        """
-        Affiche l'écran de saisie des noms de joueurs.
-
-        Args:
-            noms (list[str]): [nom_j1, nom_j2]
-            champ_actif (int): 0 ou 1 selon le champ sélectionné
-            sauvegarder (bool): état de la case à cocher sauvegarde
-        Returns:
-            tuple: (rect_champ_j1, rect_champ_j2, rect_bouton_lancer, rect_checkbox)
-        """
         screen.fill(FOND_ÉCRAN)
-
-        # Titre
         surf_titre = self.font_grand.render("Entrez les noms des joueurs", True, OR)
         screen.blit(surf_titre, (largeur // 2 - surf_titre.get_width() // 2, 80))
 
         cx = largeur // 2
-        # Champ Joueur 1
         rect_j1 = pygame.Rect(cx - 160, 200, 320, 44)
-        self.dessiner_champ_texte(screen, "Joueur 1 (Rouge)", noms[0], rect_j1,
-                                  actif=(champ_actif == 0))
+        self.dessiner_champ_texte(screen, "Joueur 1 (Rouge)", noms[0], rect_j1, actif=(champ_actif == 0))
 
-        # Champ Joueur 2
         rect_j2 = pygame.Rect(cx - 160, 310, 320, 44)
-        self.dessiner_champ_texte(screen, "Joueur 2 (Bleu)", noms[1], rect_j2,
-                                  actif=(champ_actif == 1))
+        self.dessiner_champ_texte(screen, "Joueur 2 (Bleu)", noms[1], rect_j2, actif=(champ_actif == 1))
 
-        # Case à cocher — Sauvegarder la partie
         case_taille = 22
         rect_checkbox = pygame.Rect(cx - 160, 385, case_taille, case_taille)
         pygame.draw.rect(screen, GRIS_FONCÉ,  rect_checkbox, border_radius=4)
         pygame.draw.rect(screen, GRIS_CLAIR,  rect_checkbox, 2, border_radius=4)
         if sauvegarder:
-            # Coche (✓) dessinée avec deux lignes
-            pygame.draw.line(screen, VERT_OK,
-                             (rect_checkbox.x + 4,  rect_checkbox.centery),
-                             (rect_checkbox.centerx - 1, rect_checkbox.bottom - 5), 2)
-            pygame.draw.line(screen, VERT_OK,
-                             (rect_checkbox.centerx - 1, rect_checkbox.bottom - 5),
-                             (rect_checkbox.right - 4, rect_checkbox.y + 5), 2)
-        surf_case = self.font_petit.render("Sauvegarder le résultat de la partie", True,
-                                           VERT_OK if sauvegarder else GRIS_CLAIR)
-        screen.blit(surf_case, (rect_checkbox.right + 10,
-                                rect_checkbox.centery - surf_case.get_height() // 2))
+            pygame.draw.line(screen, VERT_OK, (rect_checkbox.x + 4, rect_checkbox.centery), (rect_checkbox.centerx - 1, rect_checkbox.bottom - 5), 2)
+            pygame.draw.line(screen, VERT_OK, (rect_checkbox.centerx - 1, rect_checkbox.bottom - 5), (rect_checkbox.right - 4, rect_checkbox.y + 5), 2)
 
-        # Bouton Lancer
+        surf_case = self.font_petit.render("Sauvegarder le résultat de la partie", True, VERT_OK if sauvegarder else GRIS_CLAIR)
+        screen.blit(surf_case, (rect_checkbox.right + 10, rect_checkbox.centery - surf_case.get_height() // 2))
+
         btn = pygame.Rect(cx - 120, 430, 240, 55)
         souris = pygame.mouse.get_pos()
-        self.dessiner_bouton(screen, "Lancer la partie", btn,
-                             survol=btn.collidepoint(souris))
+        self.dessiner_bouton(screen, "Lancer la partie", btn, survol=btn.collidepoint(souris))
 
         return rect_j1, rect_j2, btn, rect_checkbox
-    
+
     def convertir_position(self, vecteur_position):
-        """
-        Convertit une position Vecteur2D en coordonnées pixels.
-        
-        Args:
-            vecteur_position (Vecteur2D): Position logique
-            
-        Returns:
-            tuple: (x_pixel, y_pixel) pour Pygame
-        """
         x = int(vecteur_position.x * self.scale_x + self.marge_left)
         y = int(vecteur_position.y * self.scale_y + self.marge_top)
         return (x, y)
-    
+
     def convertir_rayon(self, rayon):
-        """
-        Convertit un rayon logique en pixels.
-        
-        Args:
-            rayon (float): Rayon logique
-            
-        Returns:
-            int: Rayon en pixels
-        """
         return max(int(rayon * self.scale_x), 2)
-    
+
     def convertir_position_inverse(self, x_pixel, y_pixel):
-        """
-        Convertit des coordonnées pixels en position logique (inverse).
-        Utilisé pour gérer l'input souris.
-        
-        Args:
-            x_pixel (int): Position X en pixels
-            y_pixel (int): Position Y en pixels
-            
-        Returns:
-            tuple: (x_logique, y_logique)
-        """
         x_logique = (x_pixel - self.marge_left) / self.scale_x
         y_logique = (y_pixel - self.marge_top) / self.scale_y
         return (x_logique, y_logique)
-    
+
+    def _generer_fond_degrade(self):
+        surf = pygame.Surface((self.largeur_ecran, self.hauteur_ecran))
+        cr, cg, cb = VERT_FOND_CLAIR
+        fr, fg, fb = VERT_FOND_FONCE
+        for y in range(self.hauteur_ecran):
+            t = y / max(1, self.hauteur_ecran - 1)
+            r = int(cr + (fr - cr) * t)
+            g = int(cg + (fg - cg) * t)
+            b = int(cb + (fb - cb) * t)
+            pygame.draw.line(surf, (r, g, b), (0, y), (self.largeur_ecran, y))
+        return surf
+
+    def dessiner_logo(self, screen, centre_x, centre_y, echelle=1.0):
+        font = pygame.font.Font(None, int(64 * echelle))
+        segments = [
+            ("B", None),
+            ("O", ("bille", BLEU)),
+            ("UNCE", None),
+            (" B", None),
+            ("O", ("bille", ROUGE)),
+            ("X", None),
+        ]
+
+        largeur_totale = 0
+        hauteur_max = 0
+        tailles = []
+        for txt, special in segments:
+            surf = font.render(txt, True, LOGO_PIERRE)
+            tailles.append(surf)
+            largeur_totale += surf.get_width()
+            hauteur_max = max(hauteur_max, surf.get_height())
+
+        x = centre_x - largeur_totale // 2
+        y = centre_y - hauteur_max // 2
+
+        for (txt, special), surf in zip(segments, tailles):
+            if special and special[0] == "bille":
+                rayon = int(hauteur_max * 0.34)
+                cx_bille = x + surf.get_width() // 2
+                cy_bille = centre_y
+                self._dessiner_bille_brillante(screen, (cx_bille, cy_bille), rayon, special[1])
+            else:
+                ombre = font.render(txt, True, LOGO_PIERRE_OMBRE)
+                screen.blit(ombre, (x + 2, y + 2))
+                screen.blit(surf, (x, y))
+            x += surf.get_width()
+
+    def _dessiner_bille_brillante(self, screen, centre, rayon, couleur):
+        cx, cy = centre
+        r, g, b = couleur
+        base = (int(r * 0.65), int(g * 0.65), int(b * 0.65))
+        pygame.draw.circle(screen, base, (cx, cy), rayon)
+
+        n = max(3, rayon // 2)
+        for i in range(n, 0, -1):
+            t = i / n
+            rr = int(r * (0.65 + 0.35 * (1 - t)))
+            gg = int(g * (0.65 + 0.35 * (1 - t)))
+            bb = int(b * (0.65 + 0.35 * (1 - t)))
+            rr, gg, bb = min(255, rr), min(255, gg), min(255, bb)
+            offset = int(rayon * 0.25 * t)
+            pygame.draw.circle(screen, (rr, gg, bb), (cx - offset, cy - offset), int(rayon * t))
+
+        reflet_r = max(2, rayon // 4)
+        pygame.draw.circle(screen, (255, 255, 255), (cx - rayon // 3, cy - rayon // 3), reflet_r)
+        pygame.draw.circle(screen, (20, 20, 20), (cx, cy), rayon, 1)
+
     def afficher_fond(self, screen):
-        """Affiche le fond et les bordures du tapis."""
-        # Fond gris
-        screen.fill(FOND_ÉCRAN)
-        
-        # Zone de tapis (vert billard)
-        tapis_rect = pygame.Rect(
-            self.marge_left,
-            self.marge_top,
-            self.zone_largeur,
-            self.zone_hauteur
-        )
-        pygame.draw.rect(screen, VERT_TAPIS, tapis_rect)
-        
-        # Bordures
-        pygame.draw.rect(screen, BRUN_BORDURE, tapis_rect, 5)
-    
+        if self._fond_cache is None:
+            self._fond_cache = self._generer_fond_degrade()
+        screen.blit(self._fond_cache, (0, 0))
+
+        logo_cx = self.zone_x + self.zone_laterale // 2
+        self.dessiner_logo(screen, logo_cx, 45, echelle=0.85)
+
+        ep = 12
+        cadre_rect = pygame.Rect(self.marge_left - ep, self.marge_top - ep, self.zone_largeur + 2 * ep, self.zone_hauteur + 2 * ep)
+        pygame.draw.rect(screen, BOIS_CADRE, cadre_rect, border_radius=6)
+        pygame.draw.rect(screen, BOIS_CADRE_CLAIR, cadre_rect, 2, border_radius=6)
+
+        tapis_rect = pygame.Rect(self.marge_left, self.marge_top, self.zone_largeur, self.zone_hauteur)
+        pygame.draw.rect(screen, VERT_FEUTRE, tapis_rect)
+        pygame.draw.rect(screen, VERT_FEUTRE_BORD, tapis_rect, 3)
+
     def afficher_boule(self, screen, boule):
-        """
-        Dessine une boule sur l'écran.
-        
-        Args:
-            screen: Surface Pygame
-            boule (Boule): Boule à dessiner
-        """
         centre_pixel = self.convertir_position(boule.position)
         rayon_pixel = self.convertir_rayon(boule.rayon)
         couleur = couleur_boule(boule.couleur)
-        
-        # Cercle rempli
-        pygame.draw.circle(screen, couleur, centre_pixel, rayon_pixel)
-        
-        # Contour noir pour plus de clarté
-        pygame.draw.circle(screen, NOIR, centre_pixel, rayon_pixel, 2)
-    
+        self._dessiner_bille_brillante(screen, centre_pixel, rayon_pixel, couleur)
+
     def afficher_all_boules(self, screen, tapis):
-        """
-        Affiche toutes les boules du tapis.
-        
-        Args:
-            screen: Surface Pygame
-            tapis (Tapis): Tapis contenant les boules
-        """
         for boule in tapis.boules:
             self.afficher_boule(screen, boule)
-    
+
+    def afficher_visee(self, screen, partie, position_souris, force_actuelle, force_max=60.0):
+        if partie.coup_lance:
+            return
+
+        boule_blanche = partie.tapis.obtenir_boule_blanche()
+        centre = self.convertir_position(boule_blanche.position)
+
+        dx = position_souris[0] - centre[0]
+        dy = position_souris[1] - centre[1]
+        dist = math.hypot(dx, dy)
+        if dist < 5:
+            return
+        ux, uy = dx / dist, dy / dist
+
+        ratio = min(force_actuelle / force_max, 1.0) if force_actuelle > 0 else 0.0
+        longueur = 40 + ratio * 90
+        rayon_b = self.convertir_rayon(boule_blanche.rayon)
+
+        debut = (centre[0] + ux * (rayon_b + 4), centre[1] + uy * (rayon_b + 4))
+        fin = (debut[0] + ux * longueur, debut[1] + uy * longueur)
+
+        couleur_queue = (int(150 + 105 * ratio), int(110 - 70 * ratio), int(60 - 40 * ratio))
+        pygame.draw.line(screen, couleur_queue, debut, fin, 6)
+        pygame.draw.circle(screen, (230, 215, 170), (int(debut[0]), int(debut[1])), 4)
+
+        vise_fin = (centre[0] - ux * 60, centre[1] - uy * 60)
+        self._ligne_pointillee(screen, centre, vise_fin, (255, 255, 255), 1, 6)
+
+    def _ligne_pointillee(self, screen, debut, fin, couleur, epaisseur=1, segment=6):
+        x1, y1 = debut
+        x2, y2 = fin
+        dist = math.hypot(x2 - x1, y2 - y1)
+        if dist == 0:
+            return
+        ux, uy = (x2 - x1) / dist, (y2 - y1) / dist
+        n = int(dist // segment)
+        for i in range(0, n, 2):
+            sx = x1 + ux * segment * i
+            sy = y1 + uy * segment * i
+            ex = x1 + ux * segment * (i + 1)
+            ey = y1 + uy * segment * (i + 1)
+            pygame.draw.line(screen, couleur, (sx, sy), (ex, ey), epaisseur)
+
+    def _dessiner_panneau_joueur(self, screen, x, y, largeur, joueur, actif):
+        from bouncebox_boules import Couleur
+        hauteur = 78
+        rect = pygame.Rect(x, y, largeur, hauteur)
+
+        if joueur.couleur == Couleur.ROUGE:
+            fond = PANEL_ROUGE if actif else (PANEL_ROUGE[0] // 2 + 30, PANEL_ROUGE[1] // 2 + 20, PANEL_ROUGE[2] // 2 + 15)
+            couleur_bille = ROUGE
+        else:
+            fond = PANEL_BLEU if actif else (PANEL_BLEU[0] // 2 + 15, PANEL_BLEU[1] // 2 + 20, PANEL_BLEU[2] // 2 + 30)
+            couleur_bille = BLEU
+
+        pygame.draw.rect(screen, fond, rect, border_radius=10)
+        if actif:
+            pygame.draw.rect(screen, PANEL_BORDURE, rect, 3, border_radius=10)
+        else:
+            pygame.draw.rect(screen, (90, 90, 70), rect, 1, border_radius=10)
+
+        texte = f"({joueur.score})  {joueur.nom}"
+        surf_nom = self.font_moyen.render(texte, True, BLANC)
+        screen.blit(surf_nom, (x + 14, y + 8))
+
+        total = joueur.POINTS_VICTOIRE
+        rayon = 11
+        espacement = (largeur - 28) / total
+        cy = y + hauteur - 22
+        for i in range(total):
+            cx = int(x + 14 + espacement * i + espacement / 2)
+            if i < joueur.score:
+                self._dessiner_bille_brillante(screen, (cx, cy), rayon, couleur_bille)
+            else:
+                pygame.draw.circle(screen, BILLE_VIDE, (cx, cy), rayon)
+                pygame.draw.circle(screen, BILLE_VIDE_BORD, (cx, cy), rayon, 1)
+
+    def _dessiner_timer(self, screen, cx, cy, secondes):
+        minutes = secondes // 60
+        sec = secondes % 60
+        texte = f"{minutes:02d}:{sec:02d}"
+
+        surf = self.font_timer.render(texte, True, TIMER_TEXTE)
+        pad_x, pad_y = 16, 6
+        rect = pygame.Rect(0, 0, surf.get_width() + 2 * pad_x, surf.get_height() + 2 * pad_y)
+        rect.center = (cx, cy)
+
+        pygame.draw.rect(screen, TIMER_FOND, rect, border_radius=6)
+        pygame.draw.rect(screen, (150, 150, 130), rect, 2, border_radius=6)
+        screen.blit(surf, (rect.centerx - surf.get_width() // 2, rect.centery - surf.get_height() // 2))
+
     def afficher_interface(self, screen, partie, force_actuelle=0.0):
-        """
-        Affiche l'interface (scores, temps, etc).
-        
-        Args:
-            screen: Surface Pygame
-            partie (Partie): État de la partie
-            force_actuelle (float): Force actuelle du régulateur (0-10)
-        """
         j1 = partie.joueur1
         j2 = partie.joueur2
         joueur_actif = partie.joueur_actif
-        
-        # === SCORES EN HAUT ===
-        # Joueur 1 (gauche)
-        texte_j1 = self.font_moyen.render(
-            f"{j1.nom}: {j1.score}/5",
-            True,
-            couleur_joueur(j1.couleur)
-        )
-        screen.blit(texte_j1, (20, 15))
-        
-        # Joueur 2 (droite)
-        texte_j2 = self.font_moyen.render(
-            f"{j2.nom}: {j2.score}/5",
-            True,
-            couleur_joueur(j2.couleur)
-        )
-        screen.blit(
-            texte_j2,
-            (self.largeur_ecran - texte_j2.get_width() - 20, 15)
-        )
-        
-        # Joueur actif (centre)
-        couleur_active = couleur_joueur(joueur_actif.couleur)
-        texte_actif = self.font_petit.render(
-            f"Au tour de: {joueur_actif.nom}",
-            True,
-            couleur_active
-        )
-        screen.blit(
-            texte_actif,
-            (self.largeur_ecran // 2 - texte_actif.get_width() // 2, 18)
-        )
-        
-        # === TIMER EN BAS ===
-        temps_restant = max(0, int(joueur_actif.temps_restant_tour))
-        couleur_temps = VERT_OK if temps_restant > 10 else ORANGE if temps_restant > 3 else ROUGE_ERREUR
-        texte_temps = self.font_moyen.render(
-            f"Temps : {temps_restant}s",
-            True,
-            couleur_temps
-        )
-        screen.blit(
-            texte_temps,
-            (self.largeur_ecran - texte_temps.get_width() - 20,
-             self.hauteur_ecran - texte_temps.get_height() - 15)
-        )
-        
-        # === RÉGULATEUR DE FORCE ===
-        if force_actuelle > 0:
-            # Position et dimensions du régulateur
-            reg_x = 20
-            reg_y = self.hauteur_ecran - 50
-            reg_largeur = 200
-            reg_hauteur = 20
-            
-            # Fond du régulateur
-            pygame.draw.rect(screen, GRIS_FONCÉ, (reg_x, reg_y, reg_largeur, reg_hauteur))
-            
-            # Barre de remplissage
-            pourcentage = min(force_actuelle / 10.0, 1.0)
-            remplissage = int(reg_largeur * pourcentage)
-            couleur_force = (255, int(100 - pourcentage * 100), 0)  # Rouge→Orange
-            pygame.draw.rect(screen, couleur_force, (reg_x, reg_y, remplissage, reg_hauteur))
-            
-            # Bordure
-            pygame.draw.rect(screen, BLANC, (reg_x, reg_y, reg_largeur, reg_hauteur), 2)
-            
-            # Texte force
-            texte_force = self.font_petit.render(
-                f"Force: {force_actuelle:.1f}/10",
-                True,
-                BLANC
-            )
-            screen.blit(texte_force, (reg_x + 5, reg_y - 20))
-        
-        # === INSTRUCTIONS ===
-        if not partie.coup_lance:
-            if force_actuelle == 0:
-                texte_info = self.font_petit.render(
-                    "Maintenez clic pour augmenter la force, puis relâchez pour lancer",
-                    True,
-                    CYAN
-                )
-            else:
-                texte_info = self.font_petit.render(
-                    "Relâchez pour lancer!",
-                    True,
-                    JAUNE_TEXTE
-                )
-            screen.blit(texte_info, (20, self.hauteur_ecran - texte_info.get_height() - 70))
-    
-    def afficher_ecran_victoire(self, screen, largeur, hauteur, partie):
-        """
-        Affiche l'écran de victoire : fond uni, nom du vainqueur, bouton Rejouer.
+        joueur_inactif = partie.joueur_inactif  # Correction du bug d'orthographe ici
 
-        Returns:
-            pygame.Rect: rect du bouton Rejouer (pour test de clic)
-        """
+        marge = 20
+        x = self.zone_x + marge
+        largeur_panel = self.zone_laterale - 2 * marge
+
+        y_haut = 100
+        self._dessiner_panneau_joueur(screen, x, y_haut, largeur_panel, joueur_actif, actif=True)
+
+        temps_restant = max(0, int(joueur_actif.temps_restant_tour))
+        timer_cy = y_haut + 78 + 32
+        self._dessiner_timer(screen, x + largeur_panel // 2, timer_cy, temps_restant)
+
+        y_bas = timer_cy + 32
+        self._dessiner_panneau_joueur(screen, x, y_bas, largeur_panel, joueur_inactif, actif=False)
+
+        if force_actuelle > 0:
+            reg_x = self.marge_left
+            reg_y = self.marge_top + self.zone_largeur + 18
+            reg_largeur = self.zone_largeur
+            reg_hauteur = 16
+
+            pygame.draw.rect(screen, (30, 50, 25), (reg_x, reg_y, reg_largeur, reg_hauteur), border_radius=4)
+            pourcentage = min(force_actuelle / 60.0, 1.0)
+            remplissage = int(reg_largeur * pourcentage)
+            if pourcentage < 0.5:
+                t = pourcentage * 2
+                couleur_force = (int(255 * t), 255, 0)
+            else:
+                t = (pourcentage - 0.5) * 2
+                couleur_force = (255, int(255 * (1 - t)), 0)
+            pygame.draw.rect(screen, couleur_force, (reg_x, reg_y, remplissage, reg_hauteur), border_radius=4)
+            pygame.draw.rect(screen, BLANC, (reg_x, reg_y, reg_largeur, reg_hauteur), 2, border_radius=4)
+
+            texte_force = self.font_petit.render(f"Force : {force_actuelle:.0f}/60", True, BLANC)
+            screen.blit(texte_force, (reg_x, reg_y - 22))
+
+        if not partie.coup_lance:
+            msg = "Maintenez le clic pour charger, relâchez pour tirer" if force_actuelle == 0 else "Relâchez pour lancer !"
+            couleur_msg = JAUNE_TEXTE if force_actuelle > 0 else (230, 230, 210)
+            surf_info = self.font_petit.render(msg, True, couleur_msg)
+            screen.blit(surf_info, (self.marge_left, self.marge_top + self.zone_largeur + 42))
+
+    def afficher_ecran_victoire(self, screen, largeur, hauteur, partie):
         gagnant = partie.obtenir_gagnant()
         couleur_gagnant = couleur_joueur(gagnant.couleur)
 
         screen.fill(FOND_ÉCRAN)
-
         cx  = largeur  // 2
         cy  = hauteur  // 2
 
-        # Nom du vainqueur
         surf_nom = self.font_titre.render(f"{gagnant.nom}", True, couleur_gagnant)
         screen.blit(surf_nom, (cx - surf_nom.get_width() // 2, cy - 130))
 
-        # "est vainqueur !"
         surf_vainqueur = self.font_grand.render("est vainqueur !", True, OR)
         screen.blit(surf_vainqueur, (cx - surf_vainqueur.get_width() // 2, cy - 40))
 
-        # Bouton Rejouer
         btn = pygame.Rect(cx - 120, cy + 60, 240, 55)
         souris = pygame.mouse.get_pos()
-        return self.dessiner_bouton(screen, "Rejouer ?", btn,
-                                    survol=btn.collidepoint(souris))
+        return self.dessiner_bouton(screen, "Rejouer ?", btn, survol=btn.collidepoint(souris))
 
 
 class GestionnaireEntrees:
-    """
-    Gère tous les inputs (souris, clavier) pour le jeu.
-    """
-    
+    """Gère tous les inputs (souris, clavier) pour le jeu."""
+
     def __init__(self, afficheur):
-        """
-        Args:
-            afficheur (Afficheur): L'afficheur pour convertir les coordonnées
-        """
         self.afficheur = afficheur
         self.clic_en_cours = False
         self.position_clic_debut = None
-        self.temps_clic = 0.0  # Temps que le bouton est maintenu
-    
+        self.temps_clic = 0.0
+        self.position_souris = (0, 0)
+
     def gerer_clic_debut(self, x_pixel, y_pixel, partie):
-        """
-        Gère le début du clic (bouton enfoncé).
-        
-        Args:
-            x_pixel (int): Position X du clic en pixels
-            y_pixel (int): Position Y du clic en pixels
-            partie (Partie): État de la partie
-        """
         if partie.coup_lance:
-            return  # Un coup est déjà lancé
-        
+            return
         self.clic_en_cours = True
         self.position_clic_debut = (x_pixel, y_pixel)
         self.temps_clic = 0.0
-    
+
     def gerer_clic_fin(self, x_pixel, y_pixel, partie):
-        """
-        Gère la fin du clic (bouton relâché) - Lance le coup!
-        
-        Args:
-            x_pixel (int): Position X du relâchement en pixels
-            y_pixel (int): Position Y du relâchement en pixels
-            partie (Partie): État de la partie
-        """
         if not self.clic_en_cours or self.position_clic_debut is None:
             return
-        
         self.clic_en_cours = False
-        
-        # Si un coup est déjà lancé, ignorer
         if partie.coup_lance:
             return
-        
-        # Position initiale du clic
+
         x_debut, y_debut = self.position_clic_debut
-        
-        # Convertir les coordonnées
         x_depart_logique, y_depart_logique = self.afficheur.convertir_position_inverse(x_debut, y_debut)
         x_cible_logique, y_cible_logique = self.afficheur.convertir_position_inverse(x_pixel, y_pixel)
-        
-        # Obtenir la boule blanche
+
         boule = partie.tapis.obtenir_boule_blanche()
-        
-        # Vecteur de tir (du centre de la boule blanche à la cible)
         dx = x_cible_logique - boule.position.x
         dy = y_cible_logique - boule.position.y
-        
-        # Angle et distance
-        import math
+
         angle = math.atan2(dy, dx)
-        distance = math.sqrt(dx**2 + dy**2)
-        
-        # Force basée sur fonction polynomiale du second degré: f = a*t²
-        # Coefficient a = 120 pour atteindre force max 60 à t=0.71s
-        # f(0.5) = 120 * 0.5² = 120 * 0.25 = 30  →  max doublé à 60
         a = 120
-        force = min(max(a * (self.temps_clic ** 2), 0.5), 60)  # f = 120*t²
-        
+        force = min(max(a * (self.temps_clic ** 2), 0.5), 60)
+
         print(f"Tir: angle={angle:.2f}, force={force:.2f}, temps_clic={self.temps_clic:.2f}s")
-        
-        # Lancer le coup
         partie.lancer_coup(angle, force)
-        
+
         self.position_clic_debut = None
         self.temps_clic = 0.0
-    
+
     def mettre_a_jour_clic(self, delta_t):
-        """
-        Met à jour le temps de clic maintenu.
-        À appeler chaque frame.
-        
-        Args:
-            delta_t (float): Temps écoulé en secondes
-        """
         if self.clic_en_cours:
             self.temps_clic += delta_t
-    
-    def obtenir_force_actuelle(self):
-        """
-        Retourne la force actuelle (pour l'affichage du régulateur).
-        Utilise formule polynomiale du second degré: f = a*t²
 
-        Returns:
-            float: Force entre 0.5 et 60
-        """
+    def gerer_mouvement_souris(self, x_pixel, y_pixel):
+        self.position_souris = (x_pixel, y_pixel)
+
+    def obtenir_force_actuelle(self):
         if not self.clic_en_cours:
             return 0.0
-        a = 120  # Coefficient pour f = 120*t²
+        a = 120
         return min(max(a * (self.temps_clic ** 2), 0.5), 60)
 
 
 class ApplicationGUI:
-    """
-    Classe principale de l'application.
-    Gère la boucle principale du jeu.
-    """
-    
+    """Classe principale de l'application. Gère la boucle principale."""
+
     def __init__(self, largeur=1000, hauteur=600, fps=60):
-        """
-        Initialise l'application.
-        
-        Args:
-            largeur (int): Largeur de la fenêtre
-            hauteur (int): Hauteur de la fenêtre
-            fps (int): Nombre de FPS cible
-        """
         pygame.init()
         pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=512)
 
@@ -591,42 +491,34 @@ class ApplicationGUI:
         self.hauteur = hauteur
         self.fps = fps
 
-        # Configuration Pygame
         self.screen = pygame.display.set_mode((largeur, hauteur))
         pygame.display.set_caption("BounceBox - Jeu de Billard")
         self.clock = pygame.time.Clock()
 
-        # Sons synthétiques (pas de fichiers externes nécessaires)
-        self.son_collision  = _generer_son(frequence=300, duree=0.08, volume=0.35)  # choc sourd
-        self.son_point      = _generer_son(frequence=660, duree=0.25, volume=0.5)   # note aiguë
-        self.son_tour       = _generer_son(frequence=440, duree=0.15, volume=0.3)   # bip neutre
-        self.son_victoire   = _generer_son(frequence=880, duree=0.6,  volume=0.6)   # fanfare
+        self.son_collision  = _generer_son(frequence=300, duree=0.08, volume=0.35)
+        self.son_point      = _generer_son(frequence=660, duree=0.25, volume=0.5)
+        self.son_tour       = _generer_son(frequence=440, duree=0.15, volume=0.3)
+        self.son_victoire   = _generer_son(frequence=880, duree=0.6,  volume=0.6)
 
-        # Suivi d'état pour déclencher les sons au bon moment
-        self._score_avant = (0, 0)          # (score_j1, score_j2) au frame précédent
-        self._joueur_actif_avant = None     # joueur actif au frame précédent
-        self._victoire_jouee = False        # pour ne jouer la fanfare qu'une fois
+        self._score_avant = (0, 0)
+        self._joueur_actif_avant = None
+        self._victoire_jouee = False
 
-        # Composants
         self.afficheur = Afficheur(largeur, hauteur)
         self.entrees = GestionnaireEntrees(self.afficheur)
 
-        # État du jeu
         self.partie  = None
         self.running = True
 
-        # Navigation entre écrans : 'titre' → 'noms' → 'jeu'
         self.ecran        = 'titre'
-        self.noms         = ['', '']   # noms saisis par les joueurs
-        self.champ_actif  = 0          # champ de saisie actif (0 = j1, 1 = j2)
-        self.sauvegarder  = False      # case à cocher sauvegarde
-        self._tirage_timer = 0.0       # durée d'affichage du message tirage au sort
+        self.noms         = ['', '']
+        self.champ_actif  = 0
+        self.sauvegarder  = False
+        self._tirage_timer = 0.0
 
-        # Initialisation de la base de données
         initialiser_base()
-    
+
     def nouvelle_partie(self):
-        """Crée et démarre une nouvelle partie avec les noms saisis."""
         nom1 = self.noms[0].strip() or "Joueur 1"
         nom2 = self.noms[1].strip() or "Joueur 2"
         self.partie = Partie(nom1, nom2)
@@ -634,24 +526,20 @@ class ApplicationGUI:
         self._score_avant        = (0, 0)
         self._joueur_actif_avant = self.partie.joueur_actif
         self._victoire_jouee     = False
-        self._tirage_timer       = 3.0   # affiche le message pendant 3 secondes
+        self._tirage_timer       = 3.0
         print(f"Nouvelle partie : {nom1} vs {nom2}")
-    
+
     def gerer_events(self):
-        """Traite tous les événements pygame selon l'écran actif."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
 
-            # ── ÉCRAN TITRE ──────────────────────────────────────────
             elif self.ecran == 'titre':
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    btn = pygame.Rect(self.largeur // 2 - 120,
-                                      self.hauteur // 2 + 20, 240, 55)
+                    btn = pygame.Rect(self.largeur // 2 - 120, self.hauteur // 2 + 20, 240, 55)
                     if btn.collidepoint(event.pos):
                         self.ecran = 'noms'
 
-            # ── ÉCRAN NOMS ───────────────────────────────────────────
             elif self.ecran == 'noms':
                 cx = self.largeur // 2
                 rect_j1 = pygame.Rect(cx - 160, 200, 320, 44)
@@ -672,10 +560,10 @@ class ApplicationGUI:
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_TAB:
-                        self.champ_actif = 1 - self.champ_actif   # bascule entre les deux champs
+                        self.champ_actif = 1 - self.champ_actif
                     elif event.key == pygame.K_RETURN:
                         if self.champ_actif == 0:
-                            self.champ_actif = 1                  # passe au champ suivant
+                            self.champ_actif = 1
                         else:
                             self.nouvelle_partie()
                             self.ecran = 'jeu'
@@ -687,10 +575,8 @@ class ApplicationGUI:
                         if len(self.noms[self.champ_actif]) < 16:
                             self.noms[self.champ_actif] += event.unicode
 
-            # ── ÉCRAN VICTOIRE ───────────────────────────────────────
             elif self.ecran == 'victoire':
-                btn_rejouer = pygame.Rect(self.largeur // 2 - 120,
-                                          self.hauteur // 2 + 60, 240, 55)
+                btn_rejouer = pygame.Rect(self.largeur // 2 - 120, self.hauteur // 2 + 60, 240, 55)
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if btn_rejouer.collidepoint(event.pos):
                         self.noms = ['', '']
@@ -698,7 +584,6 @@ class ApplicationGUI:
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.ecran = 'titre'
 
-            # ── ÉCRAN JEU ────────────────────────────────────────────
             elif self.ecran == 'jeu':
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     x, y = event.pos
@@ -708,18 +593,20 @@ class ApplicationGUI:
                     x, y = event.pos
                     self.entrees.gerer_clic_fin(x, y, self.partie)
 
+                elif event.type == pygame.MOUSEMOTION:
+                    x, y = event.pos
+                    self.entrees.gerer_mouvement_souris(x, y)
+
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
-                        # Retour au menu noms pour recommencer
                         self.noms = ['', '']
                         self.ecran = 'noms'
                     elif event.key == pygame.K_ESCAPE:
                         self.ecran = 'titre'
                     elif event.key == pygame.K_r:
                         self.nouvelle_partie()
-    
+
     def mettre_a_jour(self):
-        """Met à jour la logique du jeu (uniquement en écran 'jeu')."""
         if self.ecran != 'jeu':
             return
         delta_t = self.clock.get_time() / 1000.0
@@ -727,32 +614,24 @@ class ApplicationGUI:
 
         self.entrees.mettre_a_jour_clic(delta_t)
 
-        # Décompte du message tirage au sort
         if self._tirage_timer > 0:
             self._tirage_timer = max(0.0, self._tirage_timer - delta_t)
 
-        # Capturer l'état AVANT la mise à jour pour détecter les changements
         score_avant = (self.partie.joueur1.score, self.partie.joueur2.score)
         joueur_avant = self.partie.joueur_actif
 
         self.partie.mettre_a_jour(delta_t)
 
-        # --- Déclenchement des sons ---
-
-        # 1. Collision entre n'importe quelles boules
         if self.partie.tapis.nb_collisions > 0:
             self.son_collision.play()
 
-        # 2. Point marqué (score a augmenté)
         score_apres = (self.partie.joueur1.score, self.partie.joueur2.score)
         if score_apres != score_avant:
             self.son_point.play()
 
-        # 3. Changement de joueur actif
         if self.partie.joueur_actif is not joueur_avant:
             self.son_tour.play()
 
-        # 4. Victoire (joué une seule fois)
         if self.partie.est_termines() and not self._victoire_jouee:
             if self.sauvegarder:
                 sauvegarder_partie(self.partie)
@@ -760,9 +639,8 @@ class ApplicationGUI:
             self._victoire_jouee = True
             self.ecran = 'victoire'
             print(f"Partie terminée! Gagnant: {self.partie.obtenir_gagnant().nom}")
-    
+
     def afficher(self):
-        """Affiche l'écran actif."""
         if self.ecran == 'titre':
             self.afficheur.afficher_ecran_titre(self.screen, self.largeur, self.hauteur)
 
@@ -771,18 +649,22 @@ class ApplicationGUI:
                                                self.noms, self.champ_actif, self.sauvegarder)
 
         elif self.ecran == 'victoire':
-            self.afficheur.afficher_ecran_victoire(self.screen, self.largeur, self.hauteur,
-                                                   self.partie)
+            self.afficheur.afficher_ecran_victoire(self.screen, self.largeur, self.hauteur, self.partie)
 
         elif self.ecran == 'jeu':
             self.afficheur.afficher_fond(self.screen)
             self.afficheur.afficher_all_boules(self.screen, self.partie.tapis)
             force_actuelle = self.entrees.obtenir_force_actuelle()
+
+            if self.entrees.clic_en_cours and not self.partie.coup_lance:
+                self.afficheur.afficher_visee(
+                    self.screen, self.partie,
+                    self.entrees.position_souris, force_actuelle, force_max=60.0
+                )
             self.afficheur.afficher_interface(self.screen, self.partie, force_actuelle)
 
-            # Message tirage au sort (affiché 3 secondes au début)
             if self._tirage_timer > 0:
-                j_rouge = self.partie.joueur_actif    # Rouge commence toujours
+                j_rouge = self.partie.joueur_actif
                 j_bleu  = self.partie.joueur_inactif
                 texte   = f"🎲  {j_rouge.nom} = Rouge  —  {j_bleu.nom} = Bleu"
                 surf_tirage = self.afficheur.font_grand.render(texte, True, OR)
@@ -795,9 +677,8 @@ class ApplicationGUI:
                 self.screen.blit(surf_tirage, (x_msg, y_msg))
 
         pygame.display.flip()
-    
+
     def lancer(self):
-        """Lance la boucle principale."""
         print("╔════════════════════════════════════════════════════════════╗")
         print("║                    BOUNCEBOX - PYGAME                      ║")
         print("║                                                            ║")
@@ -806,27 +687,26 @@ class ApplicationGUI:
         print("║  • ESPACE pour recommencer une partie                      ║")
         print("║  • ESC pour quitter                                        ║")
         print("╚════════════════════════════════════════════════════════════╝\n")
-        
+
         frame_count = 0
-        
         while self.running:
             self.gerer_events()
             self.mettre_a_jour()
             self.afficher()
-            
-            # Contrôler les FPS
             self.clock.tick(self.fps)
-            
-            # Afficher les FPS toutes les 60 frames
+
             frame_count += 1
             if frame_count % 60 == 0:
                 fps_actual = self.clock.get_fps()
                 print(f"FPS: {fps_actual:.1f}")
-        
+
         pygame.quit()
         print("Jeu fermé.")
 
 
+def main():
+    app = ApplicationGUI()
+    app.lancer()
 
 
 if __name__ == "__main__":
