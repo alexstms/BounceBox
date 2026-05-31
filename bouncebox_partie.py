@@ -1,0 +1,319 @@
+"""
+Module: partie.py
+Gestion de la partie, des joueurs et de l'état du jeu.
+Coordonne les interactions entre les joueurs, le tapis et les règles.
+"""
+
+import random
+from enum import Enum
+from datetime import datetime
+from bouncebox_boules import Couleur
+from bouncebox_tapis import Tapis
+from bouncebox_db import sauvegarder_partie
+from bouncebox_regle import ChargerRegles
+
+
+class EtatPartie(Enum):
+    """Énumération des états possibles de la partie."""
+    DEBUT = "debut"
+    EN_COURS = "en_cours"
+    FIN = "fin"
+    PAUSED = "paused"
+
+
+class Joueur:
+    """
+    Représente un joueur dans la partie.
+    Chaque joueur a une couleur et accumulé des points.
+    """
+    
+    POINTS_VICTOIRE = 5  # Nombre de boules à gagner pour gagner
+    TEMPS_TOUR = 45  # Temps limite en secondes
+    
+    def __init__(self, nom, couleur):
+        """
+        Initialise un joueur.
+        
+        Args:
+            nom (str): Nom du joueur
+            couleur (Couleur): Couleur attribuée au joueur (ROUGE ou BLEUE)
+        """
+        self.nom = nom
+        self.couleur = couleur
+        self.score = 0
+        self.temps_restant_tour = self.TEMPS_TOUR
+    
+    def incrementer_score(self):
+        """Incrémente le score du joueur (une boule gagnée)."""
+        self.score += 1
+    
+    def a_gagne(self):
+        """
+        Vérifie si ce joueur a gagné la partie.
+        
+        Returns:
+            bool: True si le score atteint POINTS_VICTOIRE
+        """
+        return self.score >= self.POINTS_VICTOIRE
+    
+    def reinitialiser_temps_tour(self):
+        """Réinitialise le temps restant pour ce tour."""
+        self.temps_restant_tour = self.TEMPS_TOUR
+    
+    def decrementer_temps(self, delta_t=1):
+        """
+        Décrémente le temps restant du tour.
+        
+        Args:
+            delta_t (float): Temps écoulé en secondes
+        """
+        self.temps_restant_tour -= delta_t
+        if self.temps_restant_tour < 0:
+            self.temps_restant_tour = 0
+    
+    def temps_ecoule(self):
+        """
+        Vérifie si le temps du tour est écoulé.
+        
+        Returns:
+            bool: True si le temps restant <= 0
+        """
+        return self.temps_restant_tour <= 0
+    
+    def __str__(self):
+        """Représentation textuelle du joueur."""
+        return f"{self.nom} ({self.couleur.value}) - Score: {self.score}"
+    
+    def __repr__(self):
+        """Représentation pour debug."""
+        return self.__str__()
+
+
+class Partie:
+    """
+    Classe principale gérant une partie de BounceBox.
+    Coordonne les joueurs, le tapis et les règles du jeu.
+    """
+    
+    def __init__(self, nom_joueur1="Joueur 1", nom_joueur2="Joueur 2", sauvegarder=False):
+        """
+        Initialise une nouvelle partie.
+
+        Args:
+            nom_joueur1 (str): Nom du premier joueur (couleur ROUGE)
+            nom_joueur2 (str): Nom du deuxième joueur (couleur BLEUE)
+            sauvegarder (bool): Si True, la partie est sauvegardée en base à la fin
+        """
+        # Chargement du DSL — config + règles
+        self.regles = ChargerRegles("regles.bb")
+
+        # Appliquer les variables DSL aux classes concernées
+        Joueur.POINTS_VICTOIRE = self.regles.config["POINTS_VICTOIRE"]
+
+        self.joueur1 = Joueur(nom_joueur1, Couleur.ROUGE)
+        self.joueur2 = Joueur(nom_joueur2, Couleur.BLEUE)
+        self.joueurs = [self.joueur1, self.joueur2]
+
+        self.tapis = Tapis(
+            nb_boules_grises=self.regles.config["NB_BOULES_GRISES"],
+            nb_boules_bleues=self.regles.config["NB_BOULES_BLEUES"],
+        )
+        self.etat = EtatPartie.DEBUT
+        self.joueur_actif = self.joueur1
+        self.joueur_inactif = self.joueur2
+        self.coup_lance = False
+        self.dernier_coup_temps = None
+        self.historique_coups = []
+        self.debut_partie = None
+        self.sauvegarder = sauvegarder
+    
+    def demarrer(self):
+        """Démarre une nouvelle partie avec tirage au sort des couleurs."""
+        self.tapis.initialiser_partie()
+        self.etat = EtatPartie.EN_COURS
+        self.debut_partie = datetime.now()
+
+        # Tirage au sort : qui reçoit le Rouge ? (Rouge commence toujours)
+        if random.randint(0, 1) == 0:
+            self.joueur1.couleur = Couleur.ROUGE
+            self.joueur2.couleur = Couleur.BLEUE
+            self.joueur_actif    = self.joueur1
+            self.joueur_inactif  = self.joueur2
+        else:
+            self.joueur1.couleur = Couleur.BLEUE
+            self.joueur2.couleur = Couleur.ROUGE
+            self.joueur_actif    = self.joueur2
+            self.joueur_inactif  = self.joueur1
+
+        self.joueur_actif.reinitialiser_temps_tour()
+        self.joueur_inactif.reinitialiser_temps_tour()
+        print(f"🎲 Tirage : {self.joueur_actif.nom} = Rouge (commence), "
+              f"{self.joueur_inactif.nom} = Bleu")
+    
+    def obtenir_joueur_actif(self):
+        """
+        Retourne le joueur actuellement actif (qui joue).
+        
+        Returns:
+            Joueur: Le joueur actif
+        """
+        return self.joueur_actif
+    
+    def obtenir_joueur_inactif(self):
+        """
+        Retourne le joueur inactif.
+        
+        Returns:
+            Joueur: Le joueur inactif
+        """
+        return self.joueur_inactif
+    
+    def changer_joueur_actif(self):
+        """Change le joueur actif (bascule entre les deux joueurs)."""
+        self.joueur_actif, self.joueur_inactif = self.joueur_inactif, self.joueur_actif
+        self.joueur_actif.reinitialiser_temps_tour()
+        self.coup_lance = False
+        # ⚠️ NE PAS réinitialiser la boule blanche - elle reste où elle s'est arrêtée!
+    
+    def lancer_coup(self, angle, force):
+        """
+        Lance la boule blanche avec l'angle et la force spécifiés.
+        
+        Args:
+            angle (float): Angle en radians (0 = droite, π/2 = haut)
+            force (float): Force du tir (0 à 1 généralement)
+            
+        Returns:
+            bool: True si le coup a été lancé avec succès
+        """
+        import math
+        from bouncebox_vecteur import Vecteur2D
+        
+        if self.coup_lance:
+            return False  # Un seul coup par tour
+        
+        boule_blanche = self.tapis.obtenir_boule_blanche()
+        
+        # Créer le vecteur de vitesse
+        vitesse = Vecteur2D(
+            force * math.cos(angle),
+            force * math.sin(angle)
+        )
+        
+        boule_blanche.appliquer_force(vitesse)
+        self.coup_lance = True
+        self.dernier_coup_temps = datetime.now()
+        self.historique_coups.append({
+            'joueur': self.joueur_actif.nom,
+            'angle': angle,
+            'force': force,
+            'temps': self.dernier_coup_temps
+        })
+        
+        return True
+    
+    def mettre_a_jour(self, delta_t=0.016):
+        """
+        Met à jour l'état de la partie (physique, temps, etc).
+        À appeler régulièrement (ex: 60 FPS).
+        
+        Args:
+            delta_t (float): Intervalle de temps en secondes
+        """
+        if self.etat != EtatPartie.EN_COURS:
+            return
+        
+        # Mettre à jour le tapis (mouvements + collisions physiques)
+        self.tapis.mettre_a_jour(delta_t)
+        
+        # ===== APPLICATION DES RÈGLES MÉTIER =====
+        # On lit les collisions enregistrées par le tapis pendant ce frame.
+        # Important : on NE peut PAS tester en_collision_avec ici, parce que
+        # le tapis a déjà séparé physiquement les boules pour éviter les
+        # chevauchements visuels — donc elles ne se touchent plus.
+        if self.coup_lance and self.tapis.collisions_blanche:
+            from bouncebox_boules import BouleCouleur
+
+            for boule in list(self.tapis.collisions_blanche):
+                if not isinstance(boule, BouleCouleur):
+                    continue
+                self.regles.appliquer(self.joueur_actif, boule, self.tapis)
+        
+        # Vérifier la fin du tour (toutes les boules immobiles)
+        if self.coup_lance and self.tapis.toutes_boules_immobiles():
+            self._evaluer_tour()
+            return
+        
+        # Décrémenter le temps du joueur actif seulement après un coup
+        if self.coup_lance:
+            self.joueur_actif.decrementer_temps(delta_t)
+            
+            if self.joueur_actif.temps_ecoule():
+                self.changer_joueur_actif()
+    
+    def _evaluer_tour(self):
+        """
+        Évalue le tour qui vient de se terminer.
+        Change de joueur automatiquement quand les boules s'arrêtent.
+        """
+        # Passer au joueur suivant
+        self.changer_joueur_actif()
+        print(f"Tour du {self.joueur_actif.nom} ({self.joueur_actif.couleur.value})")
+    
+    def _terminer(self):
+        """
+        Clôture la partie : met l'état à FIN et déclenche la sauvegarde
+        si self.sauvegarder est True. Appelée une seule fois.
+        """
+        if self.etat == EtatPartie.FIN:
+            return  # Déjà terminée, on n'appelle pas deux fois
+        self.etat = EtatPartie.FIN
+        if self.sauvegarder:
+            sauvegarder_partie(self)
+
+    def est_termines(self):
+        """
+        Vérifie si la partie est terminée.
+        Déclenche _terminer() dès qu'un joueur atteint le score de victoire.
+
+        Returns:
+            bool: True si un joueur a atteint POINTS_VICTOIRE points
+        """
+        if self.joueur1.a_gagne() or self.joueur2.a_gagne():
+            self._terminer()
+            return True
+        return False
+    
+    def obtenir_gagnant(self):
+        """
+        Retourne le gagnant de la partie.
+        
+        Returns:
+            Joueur: Le joueur gagnant, ou None si la partie n'est pas finie
+        """
+        if self.joueur1.a_gagne():
+            return self.joueur1
+        if self.joueur2.a_gagne():
+            return self.joueur2
+        return None
+    
+    def obtenir_temps_partie(self):
+        """
+        Calcule le temps écoulé depuis le début de la partie.
+        
+        Returns:
+            float: Temps en secondes, ou None si pas commencée
+        """
+        if self.debut_partie is None:
+            return None
+        return (datetime.now() - self.debut_partie).total_seconds()
+    
+    def __str__(self):
+        """Représentation textuelle de la partie."""
+        return (f"Partie - {self.joueur1.nom} vs {self.joueur2.nom} - "
+                f"État: {self.etat.value}")
+    
+    def __repr__(self):
+        """Représentation pour debug."""
+        return self.__str__()
+
