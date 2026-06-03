@@ -586,15 +586,20 @@ class ApplicationGUI:
         self._ia_joueur2 = None
 
         if self.mode_jeu == 'jvia':
-            # Joueur2 devient une IA — on garde la couleur tirée au sort
-            ia = JoueurIA("IA", self.partie.joueur2.couleur, self.niveau_ia)
-            ia.score = self.partie.joueur2.score
-            ia.temps_restant_tour = self.partie.joueur2.temps_restant_tour
-            self.partie.joueur2 = ia
-            self.partie.joueurs[1] = ia
-            if self.partie.joueur_actif is self.partie.joueur2:
-                self.partie.joueur_actif  = ia
-            if self.partie.joueur_inactif is self.partie.joueur2:
+            # Sauvegarder les références AVANT tout remplacement
+            ancien_j2      = self.partie.joueur2
+            actif_est_j2   = (self.partie.joueur_actif   is ancien_j2)
+            inactif_est_j2 = (self.partie.joueur_inactif is ancien_j2)
+
+            ia = JoueurIA("IA", ancien_j2.couleur, self.niveau_ia)
+            ia.score              = ancien_j2.score
+            ia.temps_restant_tour = ancien_j2.temps_restant_tour
+
+            self.partie.joueur2      = ia
+            self.partie.joueurs[1]   = ia
+            if actif_est_j2:
+                self.partie.joueur_actif   = ia
+            if inactif_est_j2:
                 self.partie.joueur_inactif = ia
             self._ia_joueur2 = ia
 
