@@ -15,6 +15,7 @@ import pygame
 from bouncebox_partie import Partie
 from bouncebox_couleurs import *
 from bouncebox_db import initialiser_base, sauvegarder_partie
+from bouncebox_ia import JoueurIA, NiveauIA
 
 # ============================================================================
 # CONSTANTES DE SÉCURITÉ POUR L'INTERFACE GRAPHIQUE
@@ -131,34 +132,86 @@ class Afficheur:
         souris = pygame.mouse.get_pos()
         return self.dessiner_bouton(screen, "▶  Jouer", btn, survol=btn.collidepoint(souris))
 
-    def afficher_ecran_noms(self, screen, largeur, hauteur, noms, champ_actif, sauvegarder=False):
+    def afficher_ecran_mode(self, screen, largeur, hauteur):
+        """Affiche l'écran de sélection du mode de jeu (J1vsJ2, J1vsIA, IAvsIA)."""
+        screen.fill(FOND_ÉCRAN)
+        surf_titre = self.font_grand.render("Choisir le mode de jeu", True, OR)
+        screen.blit(surf_titre, (largeur // 2 - surf_titre.get_width() // 2, 80))
+
+        cx = largeur // 2
+        modes = [
+            ("Joueur vs Joueur",  'jvj'),
+            ("Joueur vs IA",      'jvia'),
+            ("IA vs IA",          'iavia'),
+        ]
+        rects = {}
+        souris = pygame.mouse.get_pos()
+        for i, (label, key) in enumerate(modes):
+            rect = pygame.Rect(cx - 160, 180 + i * 90, 320, 60)
+            self.dessiner_bouton(screen, label, rect, survol=rect.collidepoint(souris))
+            rects[key] = rect
+
+        rect_retour = pygame.Rect(cx - 80, 470, 160, 45)
+        self.dessiner_bouton(screen, "<- Retour", rect_retour, survol=rect_retour.collidepoint(souris))
+        rects['retour'] = rect_retour
+        return rects
+
+    def afficher_ecran_noms(self, screen, largeur, hauteur, noms, champ_actif, sauvegarder=False, mode='jvj', niveau_ia=NiveauIA.MOYEN):
         screen.fill(FOND_ÉCRAN)
         surf_titre = self.font_grand.render("Entrez les noms des joueurs", True, OR)
         screen.blit(surf_titre, (largeur // 2 - surf_titre.get_width() // 2, 80))
 
         cx = largeur // 2
+
+        label1 = "Joueur 1 (Rouge)"
+        label2 = "IA (Bleu)" if mode == 'jvia' else ("IA Rouge" if mode == 'iavia' else "Joueur 2 (Bleu)")
+
         rect_j1 = pygame.Rect(cx - 160, 200, 320, 44)
-        self.dessiner_champ_texte(screen, "Joueur 1 (Rouge)", noms[0], rect_j1, actif=(champ_actif == 0))
+        desactive_j1 = (mode == 'iavia')
+        affiche_j1 = noms[0] if not desactive_j1 else "IA 1"
+        self.dessiner_champ_texte(screen, label1, affiche_j1, rect_j1, actif=(champ_actif == 0 and not desactive_j1))
 
         rect_j2 = pygame.Rect(cx - 160, 310, 320, 44)
-        self.dessiner_champ_texte(screen, "Joueur 2 (Bleu)", noms[1], rect_j2, actif=(champ_actif == 1))
+        desactive_j2 = (mode in ('jvia', 'iavia'))
+        affiche_j2 = noms[1] if not desactive_j2 else "IA 2"
+        self.dessiner_champ_texte(screen, label2, affiche_j2, rect_j2, actif=(champ_actif == 1 and not desactive_j2))
+
+        # Sélection du niveau IA (visible si mode contient une IA)
+        if mode in ('jvia', 'iavia'):
+            surf_niv = self.font_petit.render("Niveau IA :", True, GRIS_CLAIR)
+            screen.blit(surf_niv, (cx - 160, 372))
+            niveaux = [NiveauIA.FACILE, NiveauIA.MOYEN, NiveauIA.DIFFICILE]
+            labels_niv = ["Facile", "Moyen", "Difficile"]
+            rects_niveaux = []
+            for k, (niv, lbl) in enumerate(zip(niveaux, labels_niv)):
+                r = pygame.Rect(cx - 160 + k * 110, 392, 100, 34)
+                actif_niv = (niv == niveau_ia)
+                couleur_fond    = (60, 100, 60) if actif_niv else (40, 40, 55)
+                couleur_bordure = VERT_OK if actif_niv else GRIS_CLAIR
+                pygame.draw.rect(screen, couleur_fond,    r, border_radius=8)
+                pygame.draw.rect(screen, couleur_bordure, r, 2, border_radius=8)
+                surf_lbl = self.font_petit.render(lbl, True, BLANC)
+                screen.blit(surf_lbl, (r.centerx - surf_lbl.get_width() // 2, r.centery - surf_lbl.get_height() // 2))
+                rects_niveaux.append((niv, r))
+        else:
+            rects_niveaux = []
 
         case_taille = 22
-        rect_checkbox = pygame.Rect(cx - 160, 385, case_taille, case_taille)
+        rect_checkbox = pygame.Rect(cx - 160, 440, case_taille, case_taille)
         pygame.draw.rect(screen, GRIS_FONCÉ,  rect_checkbox, border_radius=4)
         pygame.draw.rect(screen, GRIS_CLAIR,  rect_checkbox, 2, border_radius=4)
         if sauvegarder:
             pygame.draw.line(screen, VERT_OK, (rect_checkbox.x + 4, rect_checkbox.centery), (rect_checkbox.centerx - 1, rect_checkbox.bottom - 5), 2)
             pygame.draw.line(screen, VERT_OK, (rect_checkbox.centerx - 1, rect_checkbox.bottom - 5), (rect_checkbox.right - 4, rect_checkbox.y + 5), 2)
 
-        surf_case = self.font_petit.render("Sauvegarder le résultat de la partie", True, VERT_OK if sauvegarder else GRIS_CLAIR)
+        surf_case = self.font_petit.render("Sauvegarder le resultat de la partie", True, VERT_OK if sauvegarder else GRIS_CLAIR)
         screen.blit(surf_case, (rect_checkbox.right + 10, rect_checkbox.centery - surf_case.get_height() // 2))
 
-        btn = pygame.Rect(cx - 120, 430, 240, 55)
+        btn = pygame.Rect(cx - 120, 485, 240, 55)
         souris = pygame.mouse.get_pos()
         self.dessiner_bouton(screen, "Lancer la partie", btn, survol=btn.collidepoint(souris))
 
-        return rect_j1, rect_j2, btn, rect_checkbox
+        return rect_j1, rect_j2, btn, rect_checkbox, rects_niveaux
 
     def convertir_position(self, vecteur_position):
         x = int(vecteur_position.x * self.scale_x + self.marge_left)
@@ -515,6 +568,10 @@ class ApplicationGUI:
         self.champ_actif  = 0
         self.sauvegarder  = False
         self._tirage_timer = 0.0
+        self.mode_jeu     = 'jvj'    # 'jvj' | 'jvia' | 'iavia'
+        self.niveau_ia    = NiveauIA.MOYEN
+        self._ia_joueur1  = None     # JoueurIA si mode iavia
+        self._ia_joueur2  = None     # JoueurIA si mode jvia ou iavia
 
         initialiser_base()
 
@@ -523,11 +580,48 @@ class ApplicationGUI:
         nom2 = self.noms[1].strip() or "Joueur 2"
         self.partie = Partie(nom1, nom2)
         self.partie.demarrer()
+
+        # Remplacer les joueurs par des JoueurIA selon le mode
+        self._ia_joueur1 = None
+        self._ia_joueur2 = None
+
+        if self.mode_jeu == 'jvia':
+            # Joueur2 devient une IA — on garde la couleur tirée au sort
+            ia = JoueurIA("IA", self.partie.joueur2.couleur, self.niveau_ia)
+            ia.score = self.partie.joueur2.score
+            ia.temps_restant_tour = self.partie.joueur2.temps_restant_tour
+            self.partie.joueur2 = ia
+            self.partie.joueurs[1] = ia
+            if self.partie.joueur_actif is self.partie.joueur2:
+                self.partie.joueur_actif  = ia
+            if self.partie.joueur_inactif is self.partie.joueur2:
+                self.partie.joueur_inactif = ia
+            self._ia_joueur2 = ia
+
+        elif self.mode_jeu == 'iavia':
+            # Les deux joueurs sont des IA
+            ia1 = JoueurIA("IA 1", self.partie.joueur1.couleur, self.niveau_ia)
+            ia2 = JoueurIA("IA 2", self.partie.joueur2.couleur, self.niveau_ia)
+            ia1.score = self.partie.joueur1.score
+            ia2.score = self.partie.joueur2.score
+            ia1.temps_restant_tour = self.partie.joueur1.temps_restant_tour
+            ia2.temps_restant_tour = self.partie.joueur2.temps_restant_tour
+
+            actif_est_j1 = (self.partie.joueur_actif is self.partie.joueur1)
+
+            self.partie.joueur1 = ia1
+            self.partie.joueur2 = ia2
+            self.partie.joueurs = [ia1, ia2]
+            self.partie.joueur_actif   = ia1 if actif_est_j1 else ia2
+            self.partie.joueur_inactif = ia2 if actif_est_j1 else ia1
+            self._ia_joueur1 = ia1
+            self._ia_joueur2 = ia2
+
         self._score_avant        = (0, 0)
         self._joueur_actif_avant = self.partie.joueur_actif
         self._victoire_jouee     = False
         self._tirage_timer       = 3.0
-        print(f"Nouvelle partie : {nom1} vs {nom2}")
+        print(f"Nouvelle partie ({self.mode_jeu}): {self.partie.joueur1.nom} vs {self.partie.joueur2.nom}")
 
     def gerer_events(self):
         for event in pygame.event.get():
@@ -538,31 +632,60 @@ class ApplicationGUI:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     btn = pygame.Rect(self.largeur // 2 - 120, self.hauteur // 2 + 20, 240, 55)
                     if btn.collidepoint(event.pos):
-                        self.ecran = 'noms'
+                        self.ecran = 'mode'
+
+            elif self.ecran == 'mode':
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    cx = self.largeur // 2
+                    rects_mode = {
+                        'jvj':   pygame.Rect(cx - 160, 180, 320, 60),
+                        'jvia':  pygame.Rect(cx - 160, 270, 320, 60),
+                        'iavia': pygame.Rect(cx - 160, 360, 320, 60),
+                        'retour':pygame.Rect(cx - 80,  470, 160, 45),
+                    }
+                    for key, rect in rects_mode.items():
+                        if rect.collidepoint(event.pos):
+                            if key == 'retour':
+                                self.ecran = 'titre'
+                            else:
+                                self.mode_jeu = key
+                                self.noms = ['', '']
+                                self.champ_actif = 0
+                                self.ecran = 'noms'
+                            break
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.ecran = 'titre'
 
             elif self.ecran == 'noms':
                 cx = self.largeur // 2
                 rect_j1 = pygame.Rect(cx - 160, 200, 320, 44)
                 rect_j2 = pygame.Rect(cx - 160, 310, 320, 44)
-                btn_lancer = pygame.Rect(cx - 120, 430, 240, 55)
-                rect_checkbox = pygame.Rect(cx - 160, 385, 22, 22)
+                btn_lancer = pygame.Rect(cx - 120, 485, 240, 55)
+                rect_checkbox = pygame.Rect(cx - 160, 440, 22, 22)
+                niveaux = [NiveauIA.FACILE, NiveauIA.MOYEN, NiveauIA.DIFFICILE]
+                rects_niveaux = [(niv, pygame.Rect(cx - 160 + k * 110, 392, 100, 34)) for k, niv in enumerate(niveaux)]
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if rect_j1.collidepoint(event.pos):
+                    if self.mode_jeu != 'iavia' and rect_j1.collidepoint(event.pos):
                         self.champ_actif = 0
-                    elif rect_j2.collidepoint(event.pos):
+                    elif self.mode_jeu == 'jvj' and rect_j2.collidepoint(event.pos):
                         self.champ_actif = 1
                     elif rect_checkbox.collidepoint(event.pos):
                         self.sauvegarder = not self.sauvegarder
                     elif btn_lancer.collidepoint(event.pos):
                         self.nouvelle_partie()
                         self.ecran = 'jeu'
+                    else:
+                        for niv, r in rects_niveaux:
+                            if r.collidepoint(event.pos):
+                                self.niveau_ia = niv
+                                break
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_TAB:
                         self.champ_actif = 1 - self.champ_actif
                     elif event.key == pygame.K_RETURN:
-                        if self.champ_actif == 0:
+                        if self.champ_actif == 0 and self.mode_jeu == 'jvj':
                             self.champ_actif = 1
                         else:
                             self.nouvelle_partie()
@@ -570,7 +693,7 @@ class ApplicationGUI:
                     elif event.key == pygame.K_BACKSPACE:
                         self.noms[self.champ_actif] = self.noms[self.champ_actif][:-1]
                     elif event.key == pygame.K_ESCAPE:
-                        self.ecran = 'titre'
+                        self.ecran = 'mode'
                     else:
                         if len(self.noms[self.champ_actif]) < 16:
                             self.noms[self.champ_actif] += event.unicode
@@ -580,7 +703,7 @@ class ApplicationGUI:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if btn_rejouer.collidepoint(event.pos):
                         self.noms = ['', '']
-                        self.ecran = 'noms'
+                        self.ecran = 'mode'
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.ecran = 'titre'
 
@@ -622,6 +745,22 @@ class ApplicationGUI:
 
         self.partie.mettre_a_jour(delta_t)
 
+        # Tour IA : si le joueur actif est une IA et qu'aucun coup n'est lancé
+        joueur_actif = self.partie.joueur_actif
+        if (not self.partie.coup_lance
+                and isinstance(joueur_actif, JoueurIA)
+                and self.partie.tapis.toutes_boules_immobiles()):
+            if joueur_actif.doit_jouer(delta_t):
+                angle, force = joueur_actif.choisir_coup(self.partie.tapis)
+                self.partie.lancer_coup(angle, force)
+                print(f"[IA] {joueur_actif.nom} joue : angle={math.degrees(angle):.1f}°, force={force:.1f}")
+
+        # Réinitialiser le compteur d'attente IA quand le joueur change
+        if self.partie.joueur_actif is not joueur_avant:
+            nouveau = self.partie.joueur_actif
+            if isinstance(nouveau, JoueurIA):
+                nouveau.reinitialiser_pour_nouveau_tour()
+
         if self.partie.tapis.nb_collisions > 0:
             self.son_collision.play()
 
@@ -644,9 +783,13 @@ class ApplicationGUI:
         if self.ecran == 'titre':
             self.afficheur.afficher_ecran_titre(self.screen, self.largeur, self.hauteur)
 
+        elif self.ecran == 'mode':
+            self.afficheur.afficher_ecran_mode(self.screen, self.largeur, self.hauteur)
+
         elif self.ecran == 'noms':
             self.afficheur.afficher_ecran_noms(self.screen, self.largeur, self.hauteur,
-                                               self.noms, self.champ_actif, self.sauvegarder)
+                                               self.noms, self.champ_actif, self.sauvegarder,
+                                               mode=self.mode_jeu, niveau_ia=self.niveau_ia)
 
         elif self.ecran == 'victoire':
             self.afficheur.afficher_ecran_victoire(self.screen, self.largeur, self.hauteur, self.partie)
